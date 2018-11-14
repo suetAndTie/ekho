@@ -1,1 +1,3 @@
 *.pyc
+ekho/data/*
+.DS_Store
