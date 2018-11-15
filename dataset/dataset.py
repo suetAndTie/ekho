@@ -6,29 +6,7 @@ https://github.com/r9y9/nnmnkwii/blob/master/nnmnkwii/datasets/__init__.py
 
 import os
 import numpy as np
-
-class FileDataSource(object):
-    """File data source interface.
-    Users are expected to implement custum data source for your own data.
-    All file data sources must implement this interface.
-    """
-
-    def collect_files(self):
-        """Collect data source files
-        Returns:
-            List or tuple of list: List of files, or tuple of list if you need
-            multiple files to collect features.
-        """
-        raise NotImplementedError
-
-    def collect_features(self, *args):
-        """Collect features given path(s).
-        Args:
-            args: File path or tuple of file paths
-        Returns:
-            2darray: ``T x D`` features represented by 2d array.
-        """
-        raise NotImplementedError
+from config import config
 
 
 class Dataset(object):
@@ -53,85 +31,30 @@ class Dataset(object):
         """
         raise NotImplementedError
 
-########## DATA SOURCE ##########
-
-class TextDataSource(FileDataSource):
-    def __init__(self, data_root, config, speaker_id=None):
-        self.data_root = data_root
-        self.speaker_ids = None
-        self.multi_speaker = False
-        # If not None, filter by speaker_id
-        self.speaker_id = speaker_id
-        self.config = config
-
-    def collect_files(self):
-        csv_file = os.path.join(self.data_root, "text.csv")
-
-        df = np.genfromtxt(csv_file, delimiter=',') # [files, texts]
-        files = df[:,0]
-
-        return files
-
-    def collect_features(self, *args):
-        # TODO: START HERE!!!!!!!!!!!!!!!!
-        if self.multi_speaker:
-            text, speaker_id = args
-        else:
-            text = args[0]
-        global _frontend
-        if _frontend is None:
-            _frontend = getattr(frontend, 'en')
-        seq = _frontend.text_to_sequence(text, p=self.config.replace_pronunciation_prob)
-
-        if self.multi_speaker:
-            return np.asarray(seq, dtype=np.int32), int(speaker_id)
-        else:
-            return np.asarray(seq, dtype=np.int32)
-
-
-class _NPYDataSource(FileDataSource):
-    def __init__(self, data_root, col, speaker_id=None):
-        self.data_root = data_root
-        self.col = col
-        self.frame_lengths = []
-        self.speaker_id = speaker_id
-
-    def collect_files(self, file_name):
-        csv_file = os.path.join(self.data_root, 'data.csv')
-
-        df = np.genfromtxt(csv_file, delimiter=',') # (spectrogram_filename, mel_filename, n_frames, text)
-        files = df[:,self.col]
-
-        return files
-
-    def collect_features(self, path):
-        return np.load(path)
-
-
-class MelSpecDataSource(_NPYDataSource):
-    def __init__(self, data_root, speaker_id=None):
-        super(MelSpecDataSource, self).__init__(data_root, 1, speaker_id)
-
-
-
-class LinearSpecDataSource(_NPYDataSource):
-    def __init__(self, data_root, speaker_id=None):
-        super(LinearSpecDataSource, self).__init__(data_root, 0, speaker_id)
-
-
-
-'''
-TODO BELOW
-WHAT IS PREPROCESSING?
-'''
-
-
-
 
 ########## DATASET ##########
 
-class FileSourceDataset(Dataset):
-    """FileSourceDataset
+class PyTorchDataset(object):
+    def __init__(self, text, mel, linear):
+        self.text = text
+        self.mel = mel
+        self.linear = linear
+        # alias
+        self.multi_speaker = text.file_data_source.multi_speaker
+
+    def __getitem__(self, idx):
+        if self.multi_speaker:
+            text, speaker_id = self.text[idx]
+            return text, self.mel[idx], self.linear[idx], speaker_id
+        else:
+            return self.text[idx], self.mel[idx], self.linear[idx]
+
+    def __len__(self):
+        return len(self.text)
+
+
+class FileDataset(Dataset):
+    """FileDataset
     Most basic dataset implementation. It supports utterance-wise iteration and
     has utility (:obj:`asarray` method) to convert dataset to an three
     dimentional :obj:`numpy.ndarray`.
@@ -150,21 +73,6 @@ class FileSourceDataset(Dataset):
         collected_files (ndarray): Collected files are stored.
     Args:
         file_data_source (FileDataSource): File data source.
-    Examples:
-        >>> from nnmnkwii.util import example_file_data_sources_for_acoustic_model
-        >>> from nnmnkwii.datasets import FileSourceDataset
-        >>> X, Y = example_file_data_sources_for_acoustic_model()
-        >>> X, Y = FileSourceDataset(X), FileSourceDataset(Y)
-        >>> for (x, y) in zip(X, Y):
-        ...     print(x.shape, y.shape)
-        ...
-        (578, 425) (578, 187)
-        (675, 425) (675, 187)
-        (606, 425) (606, 187)
-        >>> X.asarray(1000).shape
-        (3, 1000, 425)
-        >>> Y.asarray(1000).shape
-        (3, 1000, 187)
     """
 
     def __init__(self,
