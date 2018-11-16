@@ -2,7 +2,8 @@
 Based on
 https://github.com/r9y9/deepvoice3_pytorch/blob/master/train.py
 '''
-
+import numpy as np
+import torch
 from config import config
 
 def _pad(seq, max_len, constant_values=0):
@@ -73,7 +74,7 @@ def collate_fn(batch):
                      for x in batch])
     done = torch.FloatTensor(done).unsqueeze(-1)
 
-    speaker_ids = None
+    speaker_ids = torch.FloatTensor([b[3] for b in batch])
 
     return x_batch, input_lengths, mel_batch, y_batch, \
         (text_positions, frame_positions), done, target_lengths, speaker_ids

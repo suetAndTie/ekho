@@ -30,16 +30,17 @@ def build_from_path(in_dir, out_dir, num_workers=1, tqdm=lambda x: x):
     index = 1
     with open(os.path.join(out_dir, 'text.csv'), encoding='utf-8') as f:
         for line in f:
-            path, text = line.split(',')
-            if len(text) < config.min_text:
-                continue
+            path, speaker_id, text = line.split(',')
+            text = text.strip() # remove newline
+            # if len(text) < config.min_text:
+            #     continue
             futures.append(executor.submit(
-                partial(_process_utterance, out_dir, index, path, text)))
+                partial(_process_utterance, out_dir, index, path, speaker_id, text)))
             index += 1
     return [future.result() for future in tqdm(futures)]
 
 
-def _process_utterance(out_dir, index, flac_path, text):
+def _process_utterance(out_dir, index, flac_path, speaker_id, text):
     '''Preprocesses a single utterance audio/text pair.
     This writes the mel and linear scale spectrograms to disk and returns a tuple to write
     to the train.txt file.
@@ -47,12 +48,16 @@ def _process_utterance(out_dir, index, flac_path, text):
       out_dir: The directory to write the spectrograms into
       index: The numeric index to use in the spectrogram filenames.
       flac_path: Path to the audio file containing the speech input
+      speaker_id: id of speaker
       text: The text spoken in the input audio file
     Returns:
-      A (spectrogram_filename, mel_filename, n_frames, text) tuple to write to train.txt
+      A (spectrogram_filename, mel_filename, n_frames, text, speaker_id) tuple to write to data.csv
     '''
-
+    sr = config.sample_rate
     data = audio.load_flac(flac_path)
+
+    # Trim silence
+    data, _ = librosa.effects.trim(data, top_db=15)
 
     if config.rescaling:
         data = data / np.abs(data).max() * config.rescaling_max
@@ -71,4 +76,4 @@ def _process_utterance(out_dir, index, flac_path, text):
     np.save(os.path.join(out_dir, mel_filename), mel_spectrogram.T, allow_pickle=False)
 
     # Return a tuple describing this training example:
-    return (spectrogram_filename, mel_filename, n_frames, text)
+    return (spectrogram_filename, mel_filename, n_frames, text, speaker_id)

@@ -8,4 +8,6 @@ CS 236 Final Project
 ## Authors
 Trevor Tsue, Samir Sen
 
-
+pip install lws
+pip install unidecode
+pip install inflect

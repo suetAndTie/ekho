@@ -25,13 +25,12 @@ def add_text(csv_writer, path, file_type):
 
             # Read file and add to dataframe
             with item.open() as f:
-                line = f.readline()
-                while line:
+                for line in f:
                     fn, text = line.split(' ', 1)
-                    fn = str(Path(item.parent, fn + file_type))
-                    row = (fn, text.strip()) # strip \n from text
+                    speaker_id = fn.split('-')[0] # speaker is first part of file name
+                    path = str(Path(item.parent, fn + file_type))
+                    row = (path, speaker_id, text.strip()) # strip \n from text
                     csv_writer.writerow(row)
-                    line = f.readline()
 
 def preprocess(mod, in_dir, out_dir, num_workers):
     metadata = mod.build_from_path(in_dir, out_dir, num_workers, tqdm=tqdm)

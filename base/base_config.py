@@ -13,8 +13,12 @@ class BaseConfig(object):
 		self.data_shape = (1024, 1024, 3)
 
 
+		# Text type
+		self.frontend = 'en'
+
 		self.replace_pronunciation_prob = 0.5
 		self.min_text = 20
+
 
 
 		# PREPROCESSING

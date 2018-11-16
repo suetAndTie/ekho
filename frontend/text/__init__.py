@@ -1,6 +1,11 @@
+'''
+Based on
+https://github.com/r9y9/deepvoice3_pytorch/blob/master/deepvoice3_pytorch/frontend/text/__init__.py
+'''
+
 import re
-from .frontend.text import cleaners
-from .frontend.text.symbols import symbols
+from frontend.text import cleaners
+from .symbols import symbols
 
 
 # Mappings from symbol to numeric ID and vice versa:

@@ -4,7 +4,7 @@ https://github.com/r9y9/deepvoice3_pytorch/blob/master/deepvoice3_pytorch/fronte
 
 
 # coding: utf-8
-from .frontend.text.symbols import symbols
+from frontend.text.symbols import symbols
 
 import nltk
 from random import random
@@ -32,9 +32,9 @@ def mix_pronunciation(text, p):
 def text_to_sequence(text, p=0.0):
     if p >= 0:
         text = mix_pronunciation(text, p)
-    from deepvoice3_pytorch.frontend.text import text_to_sequence
+    from frontend.text import text_to_sequence
     text = text_to_sequence(text, ["english_cleaners"])
     return text
 
 
-from .frontend.text import sequence_to_text
+from frontend.text import sequence_to_text

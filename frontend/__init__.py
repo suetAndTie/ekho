@@ -10,7 +10,7 @@ All frontend module should have the following functions:
 and the property:
 - n_vocab
 """
-from deepvoice3_pytorch.frontend import en
+from frontend import en
 
 # # optional Japanese frontend
 # try:
