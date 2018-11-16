@@ -9,6 +9,7 @@ class BaseConfig(object):
 		self.batch_size = 32 # total over all gpus
 		self.epochs = 100
 		self.gpus = 1
+		self.num_workers = 1
 		self.data_shape = (1024, 1024, 3)
 
 
@@ -36,6 +37,11 @@ class BaseConfig(object):
     	# If False, assertion is added to ensure no clipping happens.
 		self.allow_clipping_in_normalization = True
 
+
+		# MODEL
+		self.outputs_per_step = 1
+		self.downsample_step = 4
+		self.pin_memory = True
 
 
 

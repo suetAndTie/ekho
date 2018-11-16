@@ -2,8 +2,10 @@ import os
 import argparse
 import torch
 import torch.optim
+import torch.utils.data
 from dataset.datasource import TextDataSource, MelSpecDataSource, LinearSpecDataSource
 from dataset.dataset import FileDataset, PyTorchDataset
+from data_loader.collate import collate_fn
 import util.util as ut
 from config import config
 
@@ -30,9 +32,16 @@ if __name__ == '__main__':
     linear = FileDataset(LinearSpecDataSource(args.data_dir))
     dataset = PyTorchDataset(text, mel, linear)
 
-    # TODO: Sampler
-    # TODO: Dataloader
-    # TODO: Trainer
+    # TODO: Sampler??
+
+    # Make DataLoader
+    data_loader = torch.utils.data.DataLoader(dataset,
+                    batch_size=config.batch_size,
+                    num_workers=config.num_workers,
+                    collate_fn=collate_fn,
+                    pin_memory=config.pin_memory
+                )
+    # TODO: Trainer??
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
