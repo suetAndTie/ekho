@@ -5,17 +5,24 @@ https://github.com/r9y9/deepvoice3_pytorch/blob/master/hparams.py
 
 class BaseConfig(object):
 	def __init__(self, **kwargs):
+		# TRAINING
 		self.lr = 1e-4
 		self.batch_size = 32 # total over all gpus
 		self.epochs = 100
 		self.gpus = 1
-		self.num_workers = 1
-		self.data_shape = (1024, 1024, 3)
+		self.num_workers = 2
+		self.lr_schedule = "noam_learning_rate_decay"
+		self.lr_schedule_kwargs = {}
 
 
-		# Text type
+		# SAVE
+		self.checkpoint_interval=10000
+    	self.eval_interval=10000
+    	self.save_optimizer_state=True,
+
+
+		# TEXT
 		self.frontend = 'en'
-
 		self.replace_pronunciation_prob = 0.5
 		self.min_text = 20
 
@@ -46,6 +53,16 @@ class BaseConfig(object):
 		self.outputs_per_step = 1
 		self.downsample_step = 4
 		self.pin_memory = True
+		self.max_positions = 512
+
+
+		# LOSS
+		self.masked_loss_weight = 0.5 # (1 - w) * loss + w * masked_loss
+		self.binary_divergence_weight = 0.1 # set 0 to disable
+		self.priority_freq = 3000 # heuristic: priotrize [0 ~ priotiry_freq] for linear loss
+		self.priority_freq_weight = 0.0
+		self.use_guided_attention = True
+		self.guided_attention_sigma = 0.2
 
 
 

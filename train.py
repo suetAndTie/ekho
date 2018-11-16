@@ -3,6 +3,7 @@ import argparse
 import torch
 import torch.optim
 import torch.utils.data
+import torch.nn as nn
 from dataset.datasource import TextDataSource, MelSpecDataSource, LinearSpecDataSource
 from dataset.dataset import FileDataset, PyTorchDataset
 from data_loader.collate import collate_fn
@@ -16,15 +17,16 @@ def train(device, model, data_loader, optimizer, writer,
           clip_thresh=1.0,
           train_seq2seq=True, train_postnet=True):
     linear_dim = model.linear_dim
-    r = hparams.outputs_per_step
-    downsample_step = hparams.downsample_step
+    r = config.outputs_per_step
+    downsample_step = config.downsample_step
     current_lr = init_lr
 
     binary_criterion = nn.BCELoss()
 
     assert train_seq2seq or train_postnet
 
-    global global_step, global_epoch
+    global_step = 0
+    global_epoch = 0
     while global_epoch < nepochs:
         running_loss = 0.
         for step, (x, input_lengths, mel, y, positions, done, target_lengths,
@@ -33,10 +35,10 @@ def train(device, model, data_loader, optimizer, writer,
             model.train()
             ismultispeaker = speaker_ids is not None
             # Learning rate schedule
-            if hparams.lr_schedule is not None:
-                lr_schedule_f = getattr(lrschedule, hparams.lr_schedule)
+            if config.lr_schedule is not None:
+                lr_schedule_f = getattr(lrschedule, config.lr_schedule)
                 current_lr = lr_schedule_f(
-                    init_lr, global_step, **hparams.lr_schedule_kwargs)
+                    init_lr, global_step, **config.lr_schedule_kwargs)
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = current_lr
             optimizer.zero_grad()
@@ -53,12 +55,12 @@ def train(device, model, data_loader, optimizer, writer,
             decoder_lengths = target_lengths.long().numpy() // r // downsample_step
 
             max_seq_len = max(input_lengths.max(), decoder_lengths.max())
-            if max_seq_len >= hparams.max_positions:
+            if max_seq_len >= config.max_positions:
                 raise RuntimeError(
                     """max_seq_len ({}) >= max_posision ({})
 Input text or decoder targget length exceeded the maximum length.
 Please set a larger value for ``max_position`` in hyper parameters.""".format(
-                        max_seq_len, hparams.max_positions))
+                        max_seq_len, config.max_positions))
 
             # Transform data to CUDA device
             if train_seq2seq:
@@ -72,14 +74,14 @@ Please set a larger value for ``max_position`` in hyper parameters.""".format(
             speaker_ids = speaker_ids.to(device) if ismultispeaker else None
 
             # Create mask if we use masked loss
-            if hparams.masked_loss_weight > 0:
+            if config.masked_loss_weight > 0:
                 # decoder output domain mask
-                decoder_target_mask = sequence_mask(
+                decoder_target_mask = ut.sequence_mask(
                     target_lengths / (r * downsample_step),
                     max_len=mel.size(1)).unsqueeze(-1)
                 if downsample_step > 1:
                     # spectrogram-domain mask
-                    target_mask = sequence_mask(
+                    target_mask = ut.sequence_mask(
                         target_lengths, max_len=y.size(1)).unsqueeze(-1)
                 else:
                     target_mask = decoder_target_mask
@@ -110,12 +112,13 @@ Please set a larger value for ``max_position`` in hyper parameters.""".format(
                 mel_outputs, attn, done_hat = None, None, None
 
             # Losses
-            w = hparams.binary_divergence_weight
+            w = config.binary_divergence_weight
 
             # mel:
             if train_seq2seq:
                 mel_l1_loss, mel_binary_div = spec_loss(
-                    mel_outputs[:, :-r, :], mel[:, r:, :], decoder_target_mask)
+                    mel_outputs[:, :-r, :], mel[:, r:, :], decoder_target_mask,
+                    config.masked_loss_weight, config.binary_divergence_weight)
                 mel_loss = (1 - w) * mel_l1_loss + w * mel_binary_div
 
             # done:
@@ -124,11 +127,12 @@ Please set a larger value for ``max_position`` in hyper parameters.""".format(
 
             # linear:
             if train_postnet:
-                n_priority_freq = int(hparams.priority_freq / (fs * 0.5) * linear_dim)
+                n_priority_freq = int(config.priority_freq / (fs * 0.5) * linear_dim)
                 linear_l1_loss, linear_binary_div = spec_loss(
                     linear_outputs[:, :-r, :], y[:, r:, :], target_mask,
+                    config.masked_loss_weight, config.binary_divergence_weight,
                     priority_bin=n_priority_freq,
-                    priority_w=hparams.priority_freq_weight)
+                    priority_w=config.priority_freq_weight)
                 linear_loss = (1 - w) * linear_l1_loss + w * linear_binary_div
 
             # Combine losses
@@ -140,10 +144,10 @@ Please set a larger value for ``max_position`` in hyper parameters.""".format(
                 loss = linear_loss
 
             # attention
-            if train_seq2seq and hparams.use_guided_attention:
+            if train_seq2seq and config.use_guided_attention:
                 soft_mask = guided_attentions(input_lengths, decoder_lengths,
                                               attn.size(-2),
-                                              g=hparams.guided_attention_sigma)
+                                              g=config.guided_attention_sigma)
                 soft_mask = torch.from_numpy(soft_mask).to(device)
                 attn_loss = (attn * soft_mask).mean()
                 loss += attn_loss
@@ -156,7 +160,7 @@ Please set a larger value for ``max_position`` in hyper parameters.""".format(
                     model, optimizer, global_step, checkpoint_dir, global_epoch,
                     train_seq2seq, train_postnet)
 
-            if global_step > 0 and global_step % hparams.eval_interval == 0:
+            if global_step > 0 and global_step % config.eval_interval == 0:
                 eval_model(global_step, writer, device, model, checkpoint_dir, ismultispeaker)
 
             # Update
@@ -178,7 +182,7 @@ Please set a larger value for ``max_position`` in hyper parameters.""".format(
                 writer.add_scalar("linear_l1_loss", float(linear_l1_loss.item()), global_step)
                 writer.add_scalar("linear_binary_div_loss", float(
                     linear_binary_div.item()), global_step)
-            if train_seq2seq and hparams.use_guided_attention:
+            if train_seq2seq and config.use_guided_attention:
                 writer.add_scalar("attn_loss", float(attn_loss.item()), global_step)
             if clip_thresh > 0:
                 writer.add_scalar("gradient norm", grad_norm, global_step)
