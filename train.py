@@ -1,15 +1,40 @@
+'''
+train.py
+Based on
+https://github.com/r9y9/deepvoice3_pytorch/blob/master/train.py
+'''
+
 import os
 import argparse
 import torch
 import torch.optim
-import torch.utils.data
 import torch.nn as nn
+import torch.utils.data
+import torch.backends.cudnn as cudnn
+
+import eval
+import frontend
+from config import config
+from loss import spec_loss
+import util.util as ut
+import util.lrschedule as lrschedule
+from util.attention import guided_attentions
+
 from dataset.datasource import TextDataSource, MelSpecDataSource, LinearSpecDataSource
 from dataset.dataset import FileDataset, PyTorchDataset
 from data_loader.collate import collate_fn
-import util.util as ut
-from config import config
-from model import model
+from data_loader.sampler import PartialyRandomizedSimilarTimeLengthSampler
+
+from tqdm import tqdm
+from tensorboardX import SummaryWriter
+
+
+global_step = 0
+global_epoch = 0
+use_cuda = torch.cuda.is_available()
+if use_cuda:
+    cudnn.benchmark = False
+_frontend = None  # to be set later
 
 
 def train(device, model, data_loader, optimizer, writer,
@@ -17,6 +42,8 @@ def train(device, model, data_loader, optimizer, writer,
           checkpoint_dir=None, checkpoint_interval=None, nepochs=None,
           clip_thresh=1.0,
           train_seq2seq=True, train_postnet=True):
+    global _frontend
+    _frontend = getattr(frontend, config.frontend)
     linear_dim = model.linear_dim
     r = config.outputs_per_step
     downsample_step = config.downsample_step
@@ -26,8 +53,7 @@ def train(device, model, data_loader, optimizer, writer,
 
     assert train_seq2seq or train_postnet
 
-    global_step = 0
-    global_epoch = 0
+    global global_step, global_epoch
     while global_epoch < nepochs:
         running_loss = 0.
         for step, (x, input_lengths, mel, y, positions, done, target_lengths,
@@ -118,8 +144,7 @@ Please set a larger value for ``max_position`` in hyper parameters.""".format(
             # mel:
             if train_seq2seq:
                 mel_l1_loss, mel_binary_div = spec_loss(
-                    mel_outputs[:, :-r, :], mel[:, r:, :], decoder_target_mask,
-                    config.masked_loss_weight, config.binary_divergence_weight)
+                    mel_outputs[:, :-r, :], mel[:, r:, :], decoder_target_mask)
                 mel_loss = (1 - w) * mel_l1_loss + w * mel_binary_div
 
             # done:
@@ -128,10 +153,9 @@ Please set a larger value for ``max_position`` in hyper parameters.""".format(
 
             # linear:
             if train_postnet:
-                n_priority_freq = int(config.priority_freq / (fs * 0.5) * linear_dim)
+                n_priority_freq = int(config.priority_freq / (config.sample_rate * 0.5) * linear_dim)
                 linear_l1_loss, linear_binary_div = spec_loss(
                     linear_outputs[:, :-r, :], y[:, r:, :], target_mask,
-                    config.masked_loss_weight, config.binary_divergence_weight,
                     priority_bin=n_priority_freq,
                     priority_w=config.priority_freq_weight)
                 linear_loss = (1 - w) * linear_l1_loss + w * linear_binary_div
@@ -154,15 +178,15 @@ Please set a larger value for ``max_position`` in hyper parameters.""".format(
                 loss += attn_loss
 
             if global_step > 0 and global_step % checkpoint_interval == 0:
-                save_states(
+                ut.save_states(
                     global_step, writer, mel_outputs, linear_outputs, attn,
                     mel, y, input_lengths, checkpoint_dir)
-                save_checkpoint(
+                ut.save_checkpoint(
                     model, optimizer, global_step, checkpoint_dir, global_epoch,
                     train_seq2seq, train_postnet)
 
             if global_step > 0 and global_step % config.eval_interval == 0:
-                eval_model(global_step, writer, device, model, checkpoint_dir, ismultispeaker)
+                eval_model(global_step, writer, device, model, checkpoint_dir, ismultispeaker, _frontend)
 
             # Update
             loss.backward()
@@ -215,33 +239,46 @@ if __name__ == '__main__':
     # if not os.path.isfile(config_path):
     #     raise IOError("No config.py found at {}".format(config_path))
 
+    _frontend = getattr(frontend, config.frontend)
+
     # Load dataset
     text = FileDataset(TextDataSource(args.data_dir))
     mel = FileDataset(MelSpecDataSource(args.data_dir))
     linear = FileDataset(LinearSpecDataSource(args.data_dir))
     dataset = PyTorchDataset(text, mel, linear)
 
-    # TODO: Sampler??
+    # Make sampler
+    frame_lengths = mel.file_data_source.frame_lengths
+    sampler = PartialyRandomizedSimilarTimeLengthSampler(
+        frame_lengths, batch_size=config.batch_size
+    )
 
     # Make DataLoader
     data_loader = torch.utils.data.DataLoader(dataset,
                     batch_size=config.batch_size,
                     num_workers=config.num_workers,
+                    sampler=sampler,
                     collate_fn=collate_fn,
                     pin_memory=config.pin_memory
                 )
-    # TODO: Trainer??
 
+    # Make Model
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
     model = ut.build_model().to(device)
     optimizer = torch.optim.Adam(model.parameters())
 
-    print(model)
+    # Make writer
+    writer = SummaryWriter(log_dir=config.log_event_path)
 
     try:
-        pass
-        # TODO: train
+        train(device, model, data_loader, optimizer, writer,
+              init_lr=config.initial_learning_rate,
+              checkpoint_dir=config.checkpoint_dir,
+              checkpoint_interval=config.checkpoint_interval,
+              nepochs=config.nepochs,
+              clip_thresh=config.clip_thresh,
+              train_seq2seq=config.train_seq2seq, train_postnet=config.train_postnet)
     except KeyboardInterrupt:
-        pass
-        # TODO: save checkpoint
+        ut.save_checkpoint(
+            model, optimizer, global_step, config.checkpoint_dir, global_epoch,
+            config.train_seq2seq, config.train_postnet)

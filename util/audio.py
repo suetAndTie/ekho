@@ -20,9 +20,9 @@ def load_flac(path):
     return librosa.core.load(path, sr=config.sample_rate)[0]
 
 
-# def save_flac(wav, path):
-#     wav = wav * 32767 / max(0.01, np.max(np.abs(wav)))
-#     wavfile.write(path, config.sample_rate, wav.astype(np.int16))
+def save_wav(wav, path):
+    wav = wav * 32767 / max(0.01, np.max(np.abs(wav)))
+    wavfile.write(path, config.sample_rate, wav.astype(np.int16))
 
 
 def preemphasis(y, coef=0.97):

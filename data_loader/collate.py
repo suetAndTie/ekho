@@ -74,7 +74,7 @@ def collate_fn(batch):
                      for x in batch])
     done = torch.FloatTensor(done).unsqueeze(-1)
 
-    speaker_ids = torch.FloatTensor([b[3] for b in batch])
+    speaker_ids = torch.LongTensor([b[3] for b in batch])
 
     return x_batch, input_lengths, mel_batch, y_batch, \
         (text_positions, frame_positions), done, target_lengths, speaker_ids

@@ -11,3 +11,4 @@ Trevor Tsue, Samir Sen
 pip install lws
 pip install unidecode
 pip install inflect
+pip install tensorboardX

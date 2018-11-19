@@ -5,20 +5,30 @@ https://github.com/r9y9/deepvoice3_pytorch/blob/master/hparams.py
 
 class BaseConfig(object):
     def __init__(self, **kwargs):
+        # TYPE
+        self.builder = "ekho"
+        self.train_seq2seq = True
+        self.train_postnet = True
+
+        # DATASET
+        self.n_speakers = 9026 # total: 2484, id goes up to 9026
+
         # TRAINING
-        self.lr = 1e-4
-        self.batch_size = 32 # total over all gpus
-        self.epochs = 100
+        self.batch_size = 16# total over all gpus
+        self.adam_beta1 = 0.5
+        self.adam_beta2 = 0.9
+        self.adam_eps = 1e-6
+        self.amsgrad = False
+        self.initial_learning_rate=5e-4  # 0.001
+        self.lr_schedule="noam_learning_rate_decay"
+        self.lr_schedule_kwargs={}
+        self.nepochs=2000
+        self.weight_decay=0.0
+        self.clip_thresh=0.1
         self.gpus = 1
         self.num_workers = 2
         self.lr_schedule = "noam_learning_rate_decay"
         self.lr_schedule_kwargs = {}
-
-
-        # SAVE
-        self.checkpoint_interval=10000
-        self.eval_interval=10000
-        self.save_optimizer_state=True,
 
 
         # TEXT
@@ -54,42 +64,47 @@ class BaseConfig(object):
         self.downsample_step = 4
         self.pin_memory = True
         self.max_positions = 512
-		self.n_speakers = 1
-		self.speaker_embed_dim = 16
-		self.text_embed_dim = 128
-		self.outputs_per_step = 1
-		self.downsample_step = 4
-		self.padding_idx = 0
-		self.dropout = 1 - 0.95
-		self.kernel_size = 3
-		self.encoder_channels = 256
-		self.decoder_channels = 256
-		self.converter_channels = 256 # Note: large comuptation cost
-		self.use_memory_mask = True
-		self.trainable_positional_encodings = False
-		self.use_decoder_state_for_postnet_input = True
-		self.max_positions = 512
-		self.speaker_embedding_weight_std = 0.01
-		self.freeze_embedding = False
-		self.key_projection = False
-		self.value_projection = False
+        self.speaker_embed_dim = 16
+        self.text_embed_dim = 128
+        self.outputs_per_step = 1
+        self.downsample_step = 4
+        self.padding_idx = 0
+        self.dropout = 1 - 0.95
+        self.kernel_size = 3
+        self.encoder_channels = 256
+        self.decoder_channels = 256
+        self.converter_channels = 256 # Note: large comuptation cost
+        self.use_memory_mask = True
+        self.trainable_positional_encodings = False
+        self.use_decoder_state_for_postnet_input = True
+        self.max_positions = 512
+        self.speaker_embedding_weight_std = 0.01
+        self.freeze_embedding = False
+        self.key_projection = False
+        self.value_projection = False
 
 
-		# ATTENTION
-		# this can be list for multple layers of attention
-    	# e.g., [True, False, False, False, True]
-    	self.force_monotonic_attention = True
-		# Attention constraint for incremental decoding
-		self.window_ahead = 3
-		# Attention constraint for incremental decoding
-		self.window_backward = 1
+        # EVAL
+        # this can be list for multple layers of attention
+        # e.g., [True, False, False, False, True]
+        self.force_monotonic_attention = True
+        # Attention constraint for incremental decoding
+        self.window_ahead = 3
+        # Attention constraint for incremental decoding
+        self.window_backward = 1
+        self.power = 1.4
 
 
-		# AUDIO
-		self.num_mels = 80
-		self.fft_size 1024
+        # AUDIO
+        self.num_mels = 80
+        self.fft_size = 1024
 
-
+        # CHECKPOINT
+        self.checkpoint_interval = 10000
+        self.eval_interval = 10000
+        self.save_optimizer_state = True
+        self.checkpoint_dir = 'ckpt'
+        self.log_event_path = 'ckpt/output.log'
 
         # LOSS
         self.masked_loss_weight = 0.5 # (1 - w) * loss + w * masked_loss
