@@ -25,6 +25,7 @@ class BaseModel(nn.Module):
                  padding_idx=None, embedding_weight_std=0.1,
                  convolutions=((64, 5, .1),) * 7,
                  max_positions=512, dropout=0.1, apply_grad_scaling=False):
+                 
         super(BaseModel, self).__init__()
         self.dropout = dropout
         self.num_attention_layers = None
@@ -64,6 +65,7 @@ class BaseModel(nn.Module):
         self.convolutions.append(Conv1d(in_channels, embed_dim, kernel_size=1,
                                         padding=0, dilation=1, std_mul=std_mul,
                                         dropout=dropout))
+
 
     def forward(self, text_sequences, text_positions=None, lengths=None,
                 speaker_embed=None):
