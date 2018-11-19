@@ -9,6 +9,7 @@ from dataset.dataset import FileDataset, PyTorchDataset
 from data_loader.collate import collate_fn
 import util.util as ut
 from config import config
+from model import model
 
 
 def train(device, model, data_loader, optimizer, writer,
@@ -207,12 +208,12 @@ if __name__ == '__main__':
                         help="Optional, name of the file in --experiment_dir containing weights to reload before \
                         training")  # 'best' or 'train'
     args = parser.parse_args()
-    model_path = os.path.join(args.experiment_dir, 'model.py')
-    config_path = os.path.join(args.experiment_dir, 'config.py')
-    if not os.path.isfile(model_path):
-        raise IOError("No model.py found at {}".format(model_path))
-    if not os.path.isfile(config_path):
-        raise IOError("No config.py found at {}".format(config_path))
+    # model_path = os.path.join(args.experiment_dir, 'model.py')
+    # config_path = os.path.join(args.experiment_dir, 'config.py')
+    # if not os.path.isfile(model_path):
+    #     raise IOError("No model.py found at {}".format(model_path))
+    # if not os.path.isfile(config_path):
+    #     raise IOError("No config.py found at {}".format(config_path))
 
     # Load dataset
     text = FileDataset(TextDataSource(args.data_dir))
@@ -233,8 +234,10 @@ if __name__ == '__main__':
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    model = ut.build_model(model_path).to(device)
+    model = ut.build_model().to(device)
     optimizer = torch.optim.Adam(model.parameters())
+
+    print(model)
 
     try:
         pass

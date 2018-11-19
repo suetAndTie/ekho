@@ -3,24 +3,57 @@ from pathlib import Path
 from importlib import import_module
 import torch
 import torch.nn as nn
+import frontend
+from model import model
+from config import config
 
-def build_model(model_path):
-    path = Path(model_path)
-    experiment_dir = path.parent
-    sys.path.append(str(experiment_dir.resolve()))
-    module = import_module(str(path.stem))
 
-    model = module.Model()
+
+def build_model():
+    # path = Path(model_path)
+    # experiment_dir = path.parent
+    # sys.path.append(str(experiment_dir.resolve()))
+    # module = import_module(str(path.stem))
+
+    _frontend = getattr(frontend, config.frontend)
+
+    model = model(
+        n_speakers=config.n_speakers,
+        speaker_embed_dim=config.speaker_embed_dim,
+        n_vocab=_frontend.n_vocab,
+        embed_dim=config.text_embed_dim,
+        mel_dim=config.num_mels,
+        linear_dim=config.fft_size // 2 + 1,
+        r=config.outputs_per_step,
+        downsample_step=config.downsample_step,
+        padding_idx=config.padding_idx,
+        dropout=config.dropout,
+        kernel_size=config.kernel_size,
+        encoder_channels=config.encoder_channels,
+        decoder_channels=config.decoder_channels,
+        converter_channels=config.converter_channels,
+        use_memory_mask=config.use_memory_mask,
+        trainable_positional_encodings=config.trainable_positional_encodings,
+        force_monotonic_attention=config.force_monotonic_attention,
+        use_decoder_state_for_postnet_input=config.use_decoder_state_for_postnet_input,
+        max_positions=config.max_positions,
+        speaker_embedding_weight_std=config.speaker_embedding_weight_std,
+        freeze_embedding=config.freeze_embedding,
+        window_ahead=config.window_ahead,
+        window_backward=config.window_backward,
+        key_projection=config.key_projection,
+        value_projection=config.value_projection,
+    )
     return model
 
-def build_config(config_path):
-    path = Path(config_path)
-    experiment_dir = path.parent
-    sys.path.append(str(experiment_dir.resolve()))
-    module = import_module(str(path.stem))
-
-    config = module.Config()
-    return config
+# def build_config(config_path):
+#     path = Path(config_path)
+#     experiment_dir = path.parent
+#     sys.path.append(str(experiment_dir.resolve()))
+#     module = import_module(str(path.stem))
+#
+#     config = module.Config()
+#     return config
 
 
 def sequence_mask(sequence_length, max_len=None):
