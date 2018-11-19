@@ -14,18 +14,10 @@ class BaseConfig(object):
 		self.lr_schedule = "noam_learning_rate_decay"
 		self.lr_schedule_kwargs = {}
 
-
-		# SAVE
-		self.checkpoint_interval=10000
-    	self.eval_interval=10000
-    	self.save_optimizer_state=True,
-
-
 		# TEXT
 		self.frontend = 'en'
 		self.replace_pronunciation_prob = 0.5
 		self.min_text = 20
-
 
 
 		# PREPROCESSING
@@ -64,6 +56,10 @@ class BaseConfig(object):
 		self.use_guided_attention = True
 		self.guided_attention_sigma = 0.2
 
+		# SAVE
+		self.checkpoint_interval = 10000
+    	self.eval_interval = 10000
+    	self.save_optimizer_state = True
 
 
 	def set(self, k, v):
