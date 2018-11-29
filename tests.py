@@ -1,4 +1,3 @@
-%pylab inline
 ! pip install -q librosa nltk
 
 import torch
