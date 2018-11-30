@@ -4,3 +4,4 @@ data/*
 ckpt
 .DS_Store
 output.log
+*.txt
