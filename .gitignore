@@ -1,3 +1,5 @@
 *.pyc
 data/*
+!data/.gitkeep
 .DS_Store
+output.log
