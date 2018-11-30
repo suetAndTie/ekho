@@ -1,5 +1,6 @@
 *.pyc
 data/*
 !data/.gitkeep
+ckpt
 .DS_Store
 output.log
