@@ -66,8 +66,6 @@ class BaseConfig(object):
         self.max_positions = 2048
         self.speaker_embed_dim = 16
         self.text_embed_dim = 128
-        self.outputs_per_step = 1
-        self.downsample_step = 4
         self.padding_idx = 0
         self.dropout = 1 - 0.95
         self.kernel_size = 3
@@ -77,7 +75,6 @@ class BaseConfig(object):
         self.use_memory_mask = True
         self.trainable_positional_encodings = False
         self.use_decoder_state_for_postnet_input = True
-        self.max_positions = 512
         self.speaker_embedding_weight_std = 0.01
         self.freeze_embedding = False
         self.key_projection = False
