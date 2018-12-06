@@ -266,17 +266,17 @@ if __name__ == '__main__':
     model = ut.build_model().to(device)
     optimizer = torch.optim.Adam(model.parameters())
 
+    # Make writer
+    writer = SummaryWriter(log_dir=config.log_event_path)
+
     ##### OPTIONAL LOAD #####
-    if config.resume is not None:
-        checkpoint = torch.load(config.resume)
+    if args.resume is not None:
+        checkpoint = torch.load(args.resume)
         model.load_state_dict(checkpoint["state_dict"])
         if config.save_optimizer_state:
             optimizer.load_state_dict(checkpoint["optimizer"])
         global_epoch = checkpoint["global_epoch"]
         global_step = checkpoint["global_step"]
-
-    # Make writer
-    writer = SummaryWriter(log_dir=config.log_event_path)
 
     try:
         train(device, model, data_loader, optimizer, writer,

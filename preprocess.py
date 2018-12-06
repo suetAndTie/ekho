@@ -71,3 +71,4 @@ if __name__ == '__main__':
 
     module = import_module('util.'+args.dataset)
     preprocess(module, args.data_dir, args.out_dir, num_workers)
+

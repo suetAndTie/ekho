@@ -221,7 +221,7 @@ def save_checkpoint(model, optimizer, step, checkpoint_dir, epoch,
         m = model.postnet
 
     checkpoint_path = os.path.join(
-        checkpoint_dir, "checkpoint_step{:09d}{}.pth".format(global_step, suffix))
+        checkpoint_dir, "checkpoint_step{:09d}{}.pth".format(step, suffix))
     optimizer_state = optimizer.state_dict() if config.save_optimizer_state else None
     torch.save({
         "state_dict": m.state_dict(),
