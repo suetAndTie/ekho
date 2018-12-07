@@ -47,14 +47,24 @@ def tts(model, text, p=0, speaker_id=None, fast=False):
 
     return waveform, alignment, spectrogram, mel
 
+def _load(checkpoint_path):
+    if use_cuda:
+        checkpoint = torch.load(checkpoint_path)
+    else:
+        checkpoint = torch.load(checkpoint_path,
+                                map_location=lambda storage, loc: storage)
+    return checkpoint
+
 
 if __name__ == '__main__':
+    # TODO FIX!!!!!!
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_dir', default='data', help="Directory containing the dataset")
     parser.add_argument('--experiment_dir', default='model/test', help="Directory containing model and configs")
     parser.add_argument('--resume', default=None,
                         help="Optional, name of the file in --model_dir containing weights to reload before \
                         training")  # 'best' or 'train'
+
     args = parser.parse_args()
     model_path = os.path.join(args.experiment_dir, 'model.py')
     config_path = os.path.join(args.experiment_dir, 'config.py')
