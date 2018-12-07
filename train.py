@@ -186,7 +186,7 @@ Please set a larger value for ``max_position`` in hyper parameters.""".format(
                     train_seq2seq, train_postnet)
 
             if global_step > 0 and global_step % config.eval_interval == 0:
-                eval_model(global_step, writer, device, model, checkpoint_dir, ismultispeaker, _frontend)
+                ut.eval_model(global_step, writer, device, model, checkpoint_dir, ismultispeaker)
 
             # Update
             loss.backward()

@@ -170,6 +170,7 @@ def eval_model(global_step, writer, device, model, checkpoint_dir, ismultispeake
         "Some have accepted this as a miracle without any physical explanation.",
     ]
     import synthesis
+    _frontend = getattr(frontend, config.frontend)
     synthesis._frontend = _frontend
 
     eval_output_dir = join(checkpoint_dir, "eval")
@@ -190,7 +191,7 @@ def eval_model(global_step, writer, device, model, checkpoint_dir, ismultispeake
             signal /= np.max(np.abs(signal))
 
             # Alignment
-            path = join(eval_output_dir, "step{:09d}_text{}_{}_alignment.png".format(
+            path = os.path.join(eval_output_dir, "step{:09d}_text{}_{}_alignment.png".format(
                 global_step, idx, speaker_str))
             save_alignment(path, alignment)
             tag = "eval_averaged_alignment_{}_{}".format(idx, speaker_str)
@@ -201,7 +202,7 @@ def eval_model(global_step, writer, device, model, checkpoint_dir, ismultispeake
                              prepare_spec_image(mel), global_step)
 
             # Audio
-            path = join(eval_output_dir, "step{:09d}_text{}_{}_predicted.wav".format(
+            path = os.path.join(eval_output_dir, "step{:09d}_text{}_{}_predicted.wav".format(
                 global_step, idx, speaker_str))
             audio.save_wav(signal, path)
 
