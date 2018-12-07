@@ -20,6 +20,7 @@ matplotlib.use('Agg') # To use on linux server without $DISPLAY
 from matplotlib import cm
 import matplotlib.pyplot as plt
 
+fs = config.sample_rate
 
 def create_model(n_vocab, embed_dim=256, mel_dim=80, linear_dim=513, r=4,
                downsample_step=1,
@@ -173,7 +174,7 @@ def eval_model(global_step, writer, device, model, checkpoint_dir, ismultispeake
     _frontend = getattr(frontend, config.frontend)
     synthesis._frontend = _frontend
 
-    eval_output_dir = join(checkpoint_dir, "eval")
+    eval_output_dir = os.path.join(checkpoint_dir, "eval")
     os.makedirs(eval_output_dir, exist_ok=True)
 
     # Prepare model for evaluation
@@ -193,13 +194,13 @@ def eval_model(global_step, writer, device, model, checkpoint_dir, ismultispeake
             # Alignment
             path = os.path.join(eval_output_dir, "step{:09d}_text{}_{}_alignment.png".format(
                 global_step, idx, speaker_str))
-            save_alignment(path, alignment)
+            save_alignment(path, alignment, global_step)
             tag = "eval_averaged_alignment_{}_{}".format(idx, speaker_str)
-            writer.add_image(tag, np.uint8(cm.viridis(np.flip(alignment, 1).T) * 255), global_step)
+            # writer.add_image(tag, np.uint8(cm.viridis(np.flip(alignment, 1).T) * 255), global_step)
 
             # Mel
-            writer.add_image("(Eval) Predicted mel spectrogram text{}_{}".format(idx, speaker_str),
-                             prepare_spec_image(mel), global_step)
+            # writer.add_image("(Eval) Predicted mel spectrogram text{}_{}".format(idx, speaker_str),
+                             # prepare_spec_image(mel), global_step)
 
             # Audio
             path = os.path.join(eval_output_dir, "step{:09d}_text{}_{}_predicted.wav".format(
