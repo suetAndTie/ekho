@@ -186,7 +186,7 @@ Please set a larger value for ``max_position`` in hyper parameters.""".format(
                     train_seq2seq, train_postnet)
 
             if global_step > 0 and global_step % config.eval_interval == 0:
-                eval_model(global_step, writer, device, model, checkpoint_dir, ismultispeaker, _frontend)
+                ut.eval_model(global_step, writer, device, model, checkpoint_dir, ismultispeaker)
 
             # Update
             loss.backward()
@@ -227,10 +227,9 @@ Please set a larger value for ``max_position`` in hyper parameters.""".format(
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_dir', default='data/processed', help="Directory containing the dataset")
-    parser.add_argument('--experiment_dir', default='experiment/example', help="Directory containing model and configs")
+    parser.add_argument('--experiment_dir', default='experiment', help="Directory containing model and configs")
     parser.add_argument('--resume', default=None,
-                        help="Optional, name of the file in --experiment_dir containing weights to reload before \
-                        training")  # 'best' or 'train'
+                        help="Optional, path containing weights to reload for training")  # 'best' or 'train'
     args = parser.parse_args()
     # model_path = os.path.join(args.experiment_dir, 'model.py')
     # config_path = os.path.join(args.experiment_dir, 'config.py')
@@ -269,6 +268,15 @@ if __name__ == '__main__':
 
     # Make writer
     writer = SummaryWriter(log_dir=config.log_event_path)
+
+    ##### OPTIONAL LOAD #####
+    if args.resume is not None:
+        checkpoint = torch.load(args.resume)
+        model.load_state_dict(checkpoint["state_dict"])
+        if config.save_optimizer_state:
+            optimizer.load_state_dict(checkpoint["optimizer"])
+        global_epoch = checkpoint["global_epoch"]
+        global_step = checkpoint["global_step"]
 
     try:
         train(device, model, data_loader, optimizer, writer,
