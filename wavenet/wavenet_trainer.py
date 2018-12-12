@@ -318,19 +318,6 @@ class DiscretizedMixturelogisticLoss(nn.Module):
         return ((losses * mask_).sum()) / mask_.sum()
 
 
-def ensure_divisible(length, divisible_by=256, lower=True):
-    if length % divisible_by == 0:
-        return length
-    if lower:
-        return length - length % divisible_by
-    else:
-        return length + (divisible_by - length % divisible_by)
-
-
-def assert_ready_for_upsampling(x, c):
-    assert len(x) % len(c) == 0 and len(x) // len(c) == audio.get_hop_size()
-
-
 def collate_fn(batch):
     """Create batch
     Args:
@@ -445,23 +432,6 @@ def collate_fn(batch):
     return x_batch, y_batch, c_batch, g_batch, input_lengths
 
 
-def time_string():
-    return datetime.now().strftime('%Y-%m-%d %H:%M')
-
-
-def save_waveplot(path, y_hat, y_target):
-    sr = hparams.sample_rate
-
-    plt.figure(figsize=(16, 6))
-    plt.subplot(2, 1, 1)
-    librosa.display.waveplot(y_target, sr=sr)
-    plt.subplot(2, 1, 2)
-    librosa.display.waveplot(y_hat, sr=sr)
-    plt.tight_layout()
-    plt.savefig(path, format="png")
-    plt.close()
-
-
 def eval_model(global_step, writer, device, model, y, c, g, input_lengths, eval_dir, ema=None):
     if ema is not None:
         print("Using averaged model for evaluation")
@@ -532,51 +502,6 @@ def eval_model(global_step, writer, device, model, y, c, g, input_lengths, eval_
     # save figure
     path = join(eval_dir, "step{:09d}_waveplots.png".format(global_step))
     save_waveplot(path, y_hat, y_target)
-
-
-def save_states(global_step, writer, y_hat, y, input_lengths, checkpoint_dir=None):
-    print("Save intermediate states at step {}".format(global_step))
-    idx = np.random.randint(0, len(y_hat))
-    length = input_lengths[idx].data.cpu().item()
-
-    # (B, C, T)
-    if y_hat.dim() == 4:
-        y_hat = y_hat.squeeze(-1)
-
-    if is_mulaw_quantize(hparams.input_type):
-        # (B, T)
-        y_hat = F.softmax(y_hat, dim=1).max(1)[1]
-
-        # (T,)
-        y_hat = y_hat[idx].data.cpu().long().numpy()
-        y = y[idx].view(-1).data.cpu().long().numpy()
-
-        y_hat = P.inv_mulaw_quantize(y_hat, hparams.quantize_channels)
-        y = P.inv_mulaw_quantize(y, hparams.quantize_channels)
-    else:
-        # (B, T)
-        y_hat = sample_from_discretized_mix_logistic(
-            y_hat, log_scale_min=hparams.log_scale_min)
-        # (T,)
-        y_hat = y_hat[idx].view(-1).data.cpu().numpy()
-        y = y[idx].view(-1).data.cpu().numpy()
-
-        if is_mulaw(hparams.input_type):
-            y_hat = P.inv_mulaw(y_hat, hparams.quantize_channels)
-            y = P.inv_mulaw(y, hparams.quantize_channels)
-
-    # Mask by length
-    y_hat[length:] = 0
-    y[length:] = 0
-
-    # Save audio
-    audio_dir = join(checkpoint_dir, "audio")
-    os.makedirs(audio_dir, exist_ok=True)
-    path = join(audio_dir, "step{:09d}_predicted.wav".format(global_step))
-    librosa.output.write_wav(path, y_hat, sr=hparams.sample_rate)
-    path = join(audio_dir, "step{:09d}_target.wav".format(global_step))
-    librosa.output.write_wav(path, y, sr=hparams.sample_rate)
-
 
 def __train_step(device, phase, epoch, global_step, global_test_step,
                  model, optimizer, writer, criterion,
@@ -786,57 +711,27 @@ def build_model():
     return model
 
 
-def _load(checkpoint_path):
-    if use_cuda:
-        checkpoint = torch.load(checkpoint_path)
-    else:
-        checkpoint = torch.load(checkpoint_path,
-                                map_location=lambda storage, loc: storage)
-    return checkpoint
-
 
 def load_checkpoint(path, model, optimizer, reset_optimizer):
-    global global_step
-    global global_epoch
-    global global_test_step
 
-    print("Load checkpoint from: {}".format(path))
-    checkpoint = _load(path)
+    checkpoint = ut.load_checkpoint(path)
     model.load_state_dict(checkpoint["state_dict"])
     if not reset_optimizer:
         optimizer_state = checkpoint["optimizer"]
         if optimizer_state is not None:
-            print("Load optimizer state from {}".format(path))
             optimizer.load_state_dict(checkpoint["optimizer"])
     global_step = checkpoint["global_step"]
     global_epoch = checkpoint["global_epoch"]
     global_test_step = checkpoint.get("global_test_step", 0)
 
+    print("Model loaded")
+
     return model
 
 
 # https://discuss.pytorch.org/t/how-to-load-part-of-pre-trained-model/1113/3
-def restore_parts(path, model):
-    print("Restore part of the model from: {}".format(path))
-    state = _load(path)["state_dict"]
-    model_dict = model.state_dict()
-    valid_state_dict = {k: v for k, v in state.items() if k in model_dict}
-
-    try:
-        model_dict.update(valid_state_dict)
-        model.load_state_dict(model_dict)
-    except RuntimeError as e:
-        # there should be invalid size of weight(s), so load them per parameter
-        print(str(e))
-        model_dict = model.state_dict()
-        for k, v in valid_state_dict.items():
-            model_dict[k] = v
-            try:
-                model.load_state_dict(model_dict)
-            except RuntimeError as e:
-                print(str(e))
-                warn("{}: may contain invalid size of weight. skipping...".format(k))
-
+def add_node(data_root):
+    del data_root
 
 def get_data_loaders(data_root, speaker_id, test_shuffle=True):
     data_loaders = {}
