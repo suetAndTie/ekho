@@ -14,6 +14,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from config import config
+import util.util as ut
 
 
 class MaskedCrossEntropyLoss(nn.Module):
@@ -27,10 +28,11 @@ class MaskedCrossEntropyLoss(nn.Module):
 
         # (B, T, 1)
         if mask is None:
-            mask = sequence_mask(lengths, max_len).unsqueeze(-1)
+            mask = ut.sequence_mask(lengths, max_len).unsqueeze(-1)
 
         # (B, T, D)
         mask_ = mask.expand_as(target)
+        print(input.shape, target.shape)
         losses = self.criterion(input, target)
         return ((losses * mask_).sum()) / mask_.sum()
 
@@ -45,7 +47,7 @@ class DiscretizedMixturelogisticLoss(nn.Module):
 
         # (B, T, 1)
         if mask is None:
-            mask = sequence_mask(lengths, max_len).unsqueeze(-1)
+            mask = ut.sequence_mask(lengths, max_len).unsqueeze(-1)
 
         # (B, T, 1)
         mask_ = mask.expand_as(target)
@@ -80,8 +82,6 @@ def discretized_mix_logistic_loss(y_hat, y, num_classes=256,
     Returns
         Tensor: loss
     """
-    print(y_hat.shape)
-    print(y.shape)
     assert y_hat.dim() == 3
     assert y_hat.size(1) % 3 == 0
     nr_mix = y_hat.size(1) // 3

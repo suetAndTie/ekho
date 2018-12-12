@@ -86,6 +86,13 @@ def train(device, model, data_loader, optimizer, writer,
             if downsample_step > 1:
                 mel = mel[:, 0::downsample_step, :].contiguous()
 
+
+            # get mask
+            if config.use_wavenet:
+                mask = ut.sequence_mask(input_lengths, max_len=y.size(1)).unsqueeze(-1)
+                mask = mask[:, 1:, :]
+                mask = mask.to(device)
+
             # Lengths
             input_lengths = input_lengths.long().numpy()
             decoder_lengths = target_lengths.long().numpy() // r // downsample_step
@@ -164,10 +171,10 @@ Please set a larger value for ``max_position`` in hyper parameters.""".format(
             if train_postnet:
                 if config.use_wavenet:
                     if wavenet_util.is_mulaw_quantize(config.input_type):
-                        y_hat = y_hat.unsqueeze(-1)
-                        linear_loss = wavenet_criterion(linear_outputs[:, :, :-r, :], y[:, r:, :], mask=target_mask)
+                        linear_outputs = linear_outputs.unsqueeze(-1)
+                        linear_loss = wavenet_criterion(linear_outputs[:, :, :-r, :], y[:, r:, :], mask=mask)
                     else:
-                        linear_loss = wavenet_criterion(linear_outputs[:, :-r, :], y[:, r:, :], mask=target_mask)
+                        linear_loss = wavenet_criterion(linear_outputs[:, :, :-r], y[:, r:, :], mask=mask)
                 else:
                     n_priority_freq = int(config.priority_freq / (config.sample_rate * 0.5) * linear_dim)
                     linear_l1_loss, linear_binary_div = spec_loss(
@@ -175,14 +182,6 @@ Please set a larger value for ``max_position`` in hyper parameters.""".format(
                         priority_bin=n_priority_freq,
                         priority_w=config.priority_freq_weight)
                     linear_loss = (1 - w) * linear_l1_loss + w * linear_binary_div
-
-                if wavenet_util.is_mulaw_quantize(config.input_type):
-                    y_hat = y_hat.unsqueeze(-1)
-                    linear_loss = wavenet_criterion(linear_outputs[:, :, :-r, :], y[:, r:, :], mask=target_mask)
-                else:
-                    print("y", y.shape)
-                    linear_loss = wavenet_criterion(linear_outputs[:, :-r, :], y[:, r:, :], mask=target_mask)
-
 
             # Combine losses
             if train_seq2seq and train_postnet:
@@ -240,7 +239,6 @@ Please set a larger value for ``max_position`` in hyper parameters.""".format(
 
             global_step += 1
             running_loss += loss.item()
-            raise "DONE ONE BATCH"
 
         averaged_loss = running_loss / (len(data_loader))
         writer.add_scalar("loss (per epoch)", averaged_loss, global_epoch)
@@ -297,7 +295,7 @@ if __name__ == '__main__':
 
     ##### OPTIONAL LOAD #####
     if args.resume is not None:
-        checkpoint = torch.load(args.resume)
+        checkpoint = util.load_checkpoint(args.resume)
         model.load_state_dict(checkpoint["state_dict"])
         if config.save_optimizer_state:
             optimizer.load_state_dict(checkpoint["optimizer"])

@@ -21,6 +21,7 @@ from matplotlib import cm
 import matplotlib.pyplot as plt
 import util.wavenet_util as wavenet_util
 
+use_cuda = torch.cuda.is_available()
 fs = config.sample_rate
 
 def create_model(n_vocab, embed_dim=256, mel_dim=80, linear_dim=513, r=4,
@@ -252,44 +253,6 @@ def sequence_mask(sequence_length, max_len=None):
     return (seq_range_expand < seq_length_expand).float()
 
 
-def spec_loss(y_hat, y, mask, masked_loss_weight, binary_divergence_weight, priority_bin=None, priority_w=0):
-    masked_l1 = MaskedL1Loss()
-    l1 = nn.L1Loss()
-
-    w = masked_loss_weight
-
-    # L1 loss
-    if w > 0:
-        assert mask is not None
-        l1_loss = w * masked_l1(y_hat, y, mask=mask) + (1 - w) * l1(y_hat, y)
-    else:
-        assert mask is None
-        l1_loss = l1(y_hat, y)
-
-    # Priority L1 loss
-    if priority_bin is not None and priority_w > 0:
-        if w > 0:
-            priority_loss = w * masked_l1(
-                y_hat[:, :, :priority_bin], y[:, :, :priority_bin], mask=mask) \
-                + (1 - w) * l1(y_hat[:, :, :priority_bin], y[:, :, :priority_bin])
-        else:
-            priority_loss = l1(y_hat[:, :, :priority_bin], y[:, :, :priority_bin])
-        l1_loss = (1 - priority_w) * l1_loss + priority_w * priority_loss
-
-    # Binary divergence loss
-    if binary_divergence_weight <= 0:
-        binary_div = y.data.new(1).zero_()
-    else:
-        y_hat_logits = logit(y_hat)
-        z = -y * y_hat_logits + torch.log1p(torch.exp(y_hat_logits))
-        if w > 0:
-            binary_div = w * masked_mean(z, mask) + (1 - w) * z.mean()
-        else:
-            binary_div = z.mean()
-
-    return l1_loss, binary_div
-
-
 def save_checkpoint(model, optimizer, step, checkpoint_dir, epoch,
                     train_seq2seq, train_postnet):
     if train_seq2seq and train_postnet:
@@ -312,6 +275,15 @@ def save_checkpoint(model, optimizer, step, checkpoint_dir, epoch,
         "global_epoch": epoch,
     }, checkpoint_path)
     print("Saved checkpoint:", checkpoint_path)
+
+
+def load_checkpoint(checkpoint_path):
+    if use_cuda:
+        checkpoint = torch.load(checkpoint_path)
+    else:
+        checkpoint = torch.load(checkpoint_path,
+                                map_location=lambda storage, loc: storage)
+    return checkpoint
 
 
 def plot_alignment(alignment, path, info=None):

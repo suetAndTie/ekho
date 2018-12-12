@@ -61,7 +61,7 @@ class BaseConfig(object):
 
         # MODEL
         self.outputs_per_step = 1
-        self.downsample_step = 4
+        self.downsample_step = 4 # 4
         self.pin_memory = True
         self.max_positions = 2048
         self.speaker_embed_dim = 16

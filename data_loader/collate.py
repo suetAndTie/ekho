@@ -5,6 +5,8 @@ https://github.com/r9y9/deepvoice3_pytorch/blob/master/train.py
 import numpy as np
 import torch
 from config import config
+import util.audio as aud
+import util.wavenet_util as wutil
 
 def _pad(seq, max_len, constant_values=0):
     return np.pad(seq, (0, max_len - len(seq)),
@@ -50,9 +52,25 @@ def collate_fn(batch):
                  dtype=np.float32)
     mel_batch = torch.FloatTensor(b)
 
-    c = np.array([_pad_2d(x[2], max_target_len, b_pad=b_pad) for x in batch],
-                 dtype=np.float32)
-    y_batch = torch.FloatTensor(c)
+    if config.use_wavenet:
+        # (B, T)
+        if wutil.is_mulaw_quantize(config.input_type):
+            padding_value = aud.mulaw_quantize(0, mu=config.quantize_channels)
+            y_batch = np.array([_pad(x[0], max_target_len, constant_values=padding_value)
+                                for x in batch], dtype=np.int)
+        else:
+            y_batch = np.array([_pad(x[0], max_target_len) for x in batch], dtype=np.float32)
+        assert len(y_batch.shape) == 2
+
+        # Add extra axis
+        if wutil.is_mulaw_quantize(config.input_type):
+            y_batch = torch.LongTensor(y_batch).unsqueeze(-1).contiguous()
+        else:
+            y_batch = torch.FloatTensor(y_batch).unsqueeze(-1).contiguous()
+    else:
+        c = np.array([_pad_2d(x[2], max_target_len, b_pad=b_pad) for x in batch],
+                     dtype=np.float32)
+        y_batch = torch.FloatTensor(c)
 
     # text positions
     text_positions = np.array([_pad(np.arange(1, len(x[0]) + 1), max_input_len)

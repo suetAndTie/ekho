@@ -54,11 +54,10 @@ if config.use_wavenet:
             linear_outputs = self.postnet(postnet_inputs, mel_outputs, speaker_embed)
 
             # reshape back to (B, C, T) -> (B, T, C)
-            # linear_outputs = torch.transpose(linear_outputs, 1, 2)
             postnet_inputs = torch.transpose(postnet_inputs, 1, 2)
             mel_outputs = torch.transpose(mel_outputs, 1, 2)
 
-            # assert linear_outputs.size(-1) == self.linear_dim
+            # assert linear_outputs.size(1) == self.linear_dim
 
             return mel_outputs, linear_outputs, alignments, done
 else:
@@ -301,7 +300,6 @@ class WaveNet(nn.Module):
 
         x = F.softmax(x, dim=1) if softmax else x
 
-        print("DONE", x.shape)
         return x
 
     def incremental_forward(self, initial_input=None, c=None, g=None,

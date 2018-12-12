@@ -8,8 +8,10 @@ class Config(BaseConfig):
         # ADD ANYTHING EXTRA HERE
 
         # WAVENET
-        self.use_wavenet =  True
-        self.input_type = 'raw'
+        self.use_wavenet = True
+        if self.use_wavenet:
+            self.downsample_step = 1 # originally 4
+        self.input_type = 'raw' # 'raw', 'mulaw-quantize'
         # This should equal to `quantize_channels` if mu-law quantize enabled
         # otherwise num_mixture * 3 (pi, mean, log_scale)
         self.out_channels = 10 * 3
@@ -34,7 +36,7 @@ class Config(BaseConfig):
         self.legacy = True
 
         # WAVENET LOSS FUNCTION
-        self.quantize_channels = 65536,  # 65536 or 256
+        self.quantize_channels = 65536  # 65536 or 256
         #  Mixture of logistic distributions:
         self.log_scale_min = float(np.log(1e-14))
 
