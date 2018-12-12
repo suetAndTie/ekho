@@ -10,10 +10,105 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from config import config
+from tqdm import tqdm
 
 from util.modules import Embedding
 from util.modules import Conv1d1x1, ResidualConv1dGLU, ConvTranspose2d
 from util.mixture import sample_from_discretized_mix_logistic
+import util.audio as audio
+
+
+def _to_numpy(x):
+    # this is ugly
+    if x is None:
+        return None
+    if isinstance(x, np.ndarray) or np.isscalar(x):
+        return x
+    # remove batch axis
+    if x.dim() == 3:
+        x = x.squeeze(0)
+    return x.numpy()
+
+
+def wavegen(model, length=None, c=None, g=None, initial_value=None,
+            fast=False, tqdm=tqdm):
+    """Generate waveform samples by WaveNet.
+    Args:
+        model (nn.Module) : WaveNet decoder
+        length (int): Time steps to generate. If conditional features are given,
+          then this is determined by the feature size.
+        c (numpy.ndarray): Conditional features, of shape T x C
+        g (scaler): Speaker ID
+        initial_value (int) : initial_value for the WaveNet decoder.
+        fast (Bool): Whether to remove weight normalization or not.
+        tqdm (lambda): tqdm
+    Returns:
+        numpy.ndarray : Generated waveform samples
+    """
+
+    c = _to_numpy(c)
+    g = _to_numpy(g)
+
+    model.eval()
+    if fast:
+        model.make_generation_fast_()
+
+    if c is None:
+        assert length is not None
+    else:
+        # (Tc, D)
+        if c.ndim != 2:
+            raise RuntimeError(
+                "Expected 2-dim shape (T, {}) for the conditional feature, but {} was actually given.".format(config.cin_channels, c.shape))
+            assert c.ndim == 2
+        Tc = c.shape[0]
+        upsample_factor = audio.get_hop_size()
+        # Overwrite length according to feature size
+        length = Tc * upsample_factor
+        # (Tc, D) -> (Tc', D)
+        # Repeat features before feeding it to the network
+        if not config.upsample_conditional_features:
+            c = np.repeat(c, upsample_factor, axis=0)
+
+        # B x C x T
+        c = torch.FloatTensor(c.T).unsqueeze(0)
+
+    if initial_value is None:
+        if is_mulaw_quantize(config.input_type):
+            initial_value = audio.mulaw_quantize(0, config.quantize_channels)
+        else:
+            initial_value = 0.0
+
+    if audio.is_mulaw_quantize(config.input_type):
+        assert initial_value >= 0 and initial_value < config.quantize_channels
+        initial_input = np_utils.to_categorical(
+            initial_value, num_classes=config.quantize_channels).astype(np.float32)
+        initial_input = torch.from_numpy(initial_input).view(
+            1, 1, config.quantize_channels)
+    else:
+        initial_input = torch.zeros(1, 1, 1).fill_(initial_value)
+
+    g = None if g is None else torch.LongTensor([g])
+
+    # Transform data to GPU
+    initial_input = initial_input.to(device)
+    g = None if g is None else g.to(device)
+    c = None if c is None else c.to(device)
+
+    with torch.no_grad():
+        y_hat = model.incremental_forward(
+            initial_input, c=c, g=g, T=length, tqdm=tqdm, softmax=True, quantize=True,
+            log_scale_min=config.log_scale_min)
+
+    if is_mulaw_quantize(config.input_type):
+        y_hat = y_hat.max(1)[1].view(-1).long().cpu().data.numpy()
+        y_hat = audio.inv_mulaw_quantize(y_hat, config.quantize_channels)
+    elif is_mulaw(config.input_type):
+        y_hat = audio.inv_mulaw(y_hat.view(-1).cpu().data.numpy(), config.quantize_channels)
+    else:
+        y_hat = y_hat.view(-1).cpu().data.numpy()
+
+    return y_hat
 
 
 if config.use_wavenet:
@@ -27,6 +122,11 @@ if config.use_wavenet:
                 speaker_embed = self.embed_speakers(speaker_ids)
             else:
                 speaker_embed = None
+
+            if mel_targets is None:
+                do_eval = True
+            else:
+                do_eval = False
 
             # Apply seq2seq
             # (B, T//r, mel_dim*r)
@@ -51,7 +151,12 @@ if config.use_wavenet:
             postnet_inputs = torch.transpose(postnet_inputs, 1, 2)
             mel_outputs = torch.transpose(mel_outputs, 1, 2)
 
-            linear_outputs = self.postnet(postnet_inputs, mel_outputs, speaker_embed)
+            # fast eval mode
+            if do_eval:
+                linear_outputs = wavegen(self.postnet, length=None, c=mel_outputs,
+                    g=speaker_embed, initial_value=None, fast=True, tqdm=tqdm)
+            else:
+                linear_outputs = self.postnet(postnet_inputs, mel_outputs, speaker_embed)
 
             # reshape back to (B, C, T) -> (B, T, C)
             postnet_inputs = torch.transpose(postnet_inputs, 1, 2)

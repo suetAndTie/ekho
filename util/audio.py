@@ -78,6 +78,48 @@ def melspectrogram(y):
 def _lws_processor():
     return lws.lws(config.fft_size, config.hop_size, mode="speech")
 
+def get_hop_size():
+    hop_size = config.hop_size
+    if hop_size is None:
+        assert config.frame_shift_ms is not None
+        hop_size = int(config.frame_shift_ms / 1000 * config.sample_rate)
+    return hop_size
+
+def start_and_end_indices(quantized, silence_threshold=2):
+    for start in range(quantized.size):
+        if abs(quantized[start] - 127) > silence_threshold:
+            break
+    for end in range(quantized.size - 1, 1, -1):
+        if abs(quantized[end] - 127) > silence_threshold:
+            break
+
+    assert abs(quantized[start] - 127) > silence_threshold
+    assert abs(quantized[end] - 127) > silence_threshold
+
+    return start, end
+
+def adjust_time_resolution(quantized, mel):
+    """Adjust time resolution by repeating features
+    Args:
+        quantized (ndarray): (T,)
+        mel (ndarray): (N, D)
+    Returns:
+        tuple: Tuple of (T,) and (T, D)
+    """
+    assert len(quantized.shape) == 1
+    assert len(mel.shape) == 2
+
+    upsample_factor = quantized.size // mel.shape[0]
+    mel = np.repeat(mel, upsample_factor, axis=0)
+    n_pad = quantized.size - mel.shape[0]
+    if n_pad != 0:
+        assert n_pad > 0
+        mel = np.pad(mel, [(0, n_pad), (0, 0)], mode="constant", constant_values=0)
+
+    # trim
+    start, end = start_and_end_indices(quantized, config.silence_threshold)
+
+    return quantized[start:end], mel[start:end, :]
 
 
 # Conversions:
@@ -205,3 +247,47 @@ def mulaw_quantize(x, mu=256):
     y = mulaw(x, mu)
     # scale [-1, 1] to [0, mu]
     return _asint((y + 1) / 2 * mu)
+
+
+def inv_mulaw(y, mu=256):
+    """Inverse of mu-law companding (mu-law expansion)
+    .. math::
+        f^{-1}(x) = sign(y) (1 / \mu) (1 + \mu)^{|y|} - 1)
+    Args:
+        y (array-like): Compressed signal. Each value of input signal must be in
+          range of [-1, 1].
+        mu (number): Compression parameter ``μ``.
+    Returns:
+        array-like: Uncomprresed signal (-1 <= x <= 1)
+    See also:
+        :func:`nnmnkwii.preprocessing.inv_mulaw`
+        :func:`nnmnkwii.preprocessing.mulaw_quantize`
+        :func:`nnmnkwii.preprocessing.inv_mulaw_quantize`
+    """
+    return _sign(y) * (1.0 / mu) * ((1.0 + mu)**_abs(y) - 1.0)
+
+
+def inv_mulaw_quantize(y, mu=256):
+    """Inverse of mu-law companding + quantize
+    Args:
+        y (array-like): Quantized signal (∈ [0, mu]).
+        mu (number): Compression parameter ``μ``.
+    Returns:
+        array-like: Uncompressed signal ([-1, 1])
+    Examples:
+        >>> from scipy.io import wavfile
+        >>> import pysptk
+        >>> import numpy as np
+        >>> from nnmnkwii import preprocessing as P
+        >>> fs, x = wavfile.read(pysptk.util.example_audio_file())
+        >>> x = (x / 32768.0).astype(np.float32)
+        >>> x_hat = P.inv_mulaw_quantize(P.mulaw_quantize(x))
+        >>> x_hat = (x_hat * 32768).astype(np.int16)
+    See also:
+        :func:`nnmnkwii.preprocessing.mulaw`
+        :func:`nnmnkwii.preprocessing.inv_mulaw`
+        :func:`nnmnkwii.preprocessing.mulaw_quantize`
+    """
+    # [0, m) to [-1, 1]
+    y = 2 * _asfloat(y) / mu - 1
+    return inv_mulaw(y, mu)

@@ -7,6 +7,7 @@ import os
 import numpy as np
 from config import config
 import frontend
+import util.audio as audio
 
 ######### TEMPLATE ##########
 class FileDataSource(object):
@@ -57,7 +58,7 @@ class TextDataSource(FileDataSource):
                 indices = speaker_ids == self.speaker_id
                 texts = texts[indices]
                 self.multi_speaker = False
-                return texts
+                return texts, audio_files
 
             return texts, speaker_ids
 

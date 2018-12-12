@@ -8,7 +8,7 @@ class Config(BaseConfig):
         # ADD ANYTHING EXTRA HERE
 
         # WAVENET
-        self.use_wavenet = True
+        self.use_wavenet = False
         if self.use_wavenet:
             self.downsample_step = 1 # originally 4
         self.input_type = 'raw' # 'raw', 'mulaw-quantize'
@@ -34,10 +34,20 @@ class Config(BaseConfig):
         # based on the legacy code that can generate high-quality audio.
         # Ref: https://github.com/r9y9/wavenet_vocoder/pull/73
         self.legacy = True
+        # this is only valid for mulaw is True
+        self.silence_threshold = 2
+
+        self.cin_channels = self.num_mels
+        self.gin_channels = self.speaker_embed_dim
 
         # WAVENET LOSS FUNCTION
         self.quantize_channels = 65536  # 65536 or 256
         #  Mixture of logistic distributions:
         self.log_scale_min = float(np.log(1e-14))
+
+        # max time steps can either be specified as sec or steps
+        # if both are None, then full audio samples are used in a batch
+        self.max_time_sec = None
+        self.max_time_steps = 2047 # 8000
 
 config = Config()

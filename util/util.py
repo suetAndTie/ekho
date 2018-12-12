@@ -20,6 +20,8 @@ matplotlib.use('Agg') # To use on linux server without $DISPLAY
 from matplotlib import cm
 import matplotlib.pyplot as plt
 import util.wavenet_util as wavenet_util
+import util.mixture as mix
+import librosa
 
 use_cuda = torch.cuda.is_available()
 fs = config.sample_rate
@@ -112,7 +114,7 @@ def create_model(n_vocab, embed_dim=256, mel_dim=80, linear_dim=513, r=4,
             upsample_conditional_features=config.upsample_conditional_features,
             upsample_scales=config.upsample_scales,
             freq_axis_kernel_size=config.freq_axis_kernel_size,
-            # scalar_input=wavenet_util.is_scalar_input(config.input_type),
+            scalar_input=wavenet_util.is_scalar_input(config.input_type),
             legacy=config.legacy
         )
     else:
@@ -183,6 +185,98 @@ def build_model():
 #
 #     config = module.Config()
 #     return config
+
+def clone_as_averaged_model(device, model, ema):
+    assert ema is not None
+    averaged_model = build_model().to(device)
+    averaged_model.load_state_dict(model.state_dict())
+    for name, param in averaged_model.named_parameters():
+        if name in ema.shadow:
+            param.data = ema.shadow[name].clone()
+    return averaged_model
+
+def save_waveplot(path, y_hat, y_target):
+    sr = config.sample_rate
+
+    plt.figure(figsize=(16, 6))
+    plt.subplot(2, 1, 1)
+    librosa.display.waveplot(y_target, sr=sr)
+    plt.subplot(2, 1, 2)
+    librosa.display.waveplot(y_hat, sr=sr)
+    plt.tight_layout()
+    plt.savefig(path, format="png")
+    plt.close()
+
+def wavenet_eval_model(global_step, writer, device, model, y, c, g, input_lengths, eval_dir, ema=None):
+    if ema is not None:
+        print("Using averaged model for evaluation")
+        model = clone_as_averaged_model(device, model, ema)
+        model.make_generation_fast_()
+
+    model.eval()
+    idx = np.random.randint(0, len(y))
+    length = input_lengths[idx].data.cpu().item()
+
+    # (T,)
+    y_target = y[idx].view(-1).data.cpu().numpy()[:length]
+
+    if c is not None:
+        if config.upsample_conditional_features:
+            c = c[idx, :, :length // audio.get_hop_size()].unsqueeze(0)
+        else:
+            c = c[idx, :, :length].unsqueeze(0)
+        assert c.dim() == 3
+        print("Shape of local conditioning features: {}".format(c.size()))
+    if g is not None:
+        # TODO: test
+        g = g[idx]
+        print("Shape of global conditioning features: {}".format(g.size()))
+
+    # Dummy silence
+    if wavenet_util.is_mulaw_quantize(config.input_type):
+        initial_value = audio.mulaw_quantize(0, config.quantize_channels)
+    elif wavenet_util.is_mulaw(config.input_type):
+        initial_value = audio.mulaw(0.0, config.quantize_channels)
+    else:
+        initial_value = 0.0
+    print("Intial value:", initial_value)
+
+    # (C,)
+    if wavenet_util.is_mulaw_quantize(config.input_type):
+        initial_input = np_utils.to_categorical(
+            initial_value, num_classes=config.quantize_channels).astype(np.float32)
+        initial_input = torch.from_numpy(initial_input).view(
+            1, 1, config.quantize_channels)
+    else:
+        initial_input = torch.zeros(1, 1, 1).fill_(initial_value)
+    initial_input = initial_input.to(device)
+
+    # Run the model in fast eval mode
+    with torch.no_grad():
+        y_hat = model.incremental_forward(
+            initial_input, c=c, g=g, T=length, softmax=True, quantize=True, tqdm=tqdm,
+            log_scale_min=config.log_scale_min)
+
+    if wavenet_util.is_mulaw_quantize(config.input_type):
+        y_hat = y_hat.max(1)[1].view(-1).long().cpu().data.numpy()
+        y_hat = audio.inv_mulaw_quantize(y_hat, config.quantize_channels)
+        y_target = audio.inv_mulaw_quantize(y_target, config.quantize_channels)
+    elif wavenet_util.is_mulaw(config.input_type):
+        y_hat = audio.inv_mulaw(y_hat.view(-1).cpu().data.numpy(), config.quantize_channels)
+        y_target = audio.inv_mulaw(y_target, config.quantize_channels)
+    else:
+        y_hat = y_hat.view(-1).cpu().data.numpy()
+
+    # Save audio
+    os.makedirs(eval_dir, exist_ok=True)
+    path = os.path.join(eval_dir, "step{:09d}_predicted.wav".format(global_step))
+    librosa.output.write_wav(path, y_hat, sr=config.sample_rate)
+    path = os.path.join(eval_dir, "step{:09d}_target.wav".format(global_step))
+    librosa.output.write_wav(path, y_target, sr=config.sample_rate)
+
+    # save figure
+    path = os.path.join(eval_dir, "step{:09d}_waveplots.png".format(global_step))
+    save_waveplot(path, y_hat, y_target)
 
 
 def eval_model(global_step, writer, device, model, checkpoint_dir, ismultispeaker):
@@ -323,6 +417,55 @@ def prepare_spec_image(spectrogram):
 def save_states(global_step, writer, mel_outputs, linear_outputs, attn, mel, y,
                 input_lengths, checkpoint_dir=None):
     print("Save intermediate states at step {}".format(global_step))
+
+    if config.use_wavenet:
+        # idx = np.random.randint(0, len(linear_outputs))
+        # length = input_lengths[idx]
+        idx = min(1, len(input_lengths) - 1)
+        input_length = input_lengths[idx]
+        length = input_length
+
+        # (B, C, T)
+        if linear_outputs.dim() == 4:
+            linear_outputs = linear_outputs.squeeze(-1)
+
+        if wavenet_util.is_mulaw_quantize(config.input_type):
+            # (B, T)
+            linear_outputs = F.softmax(linear_outputs, dim=1).max(1)[1]
+
+            # (T,)
+            linear_outputs = linear_outputs[idx].data.cpu().long().numpy()
+            y = y[idx].view(-1).data.cpu().long().numpy()
+
+            linear_outputs = audio.inv_mulaw_quantize(linear_outputs, config.quantize_channels)
+            y = audio.inv_mulaw_quantize(y, config.quantize_channels)
+        else:
+            # (B, T)
+            linear_outputs = mix.sample_from_discretized_mix_logistic(
+                linear_outputs, log_scale_min=config.log_scale_min)
+            # (T,)
+            linear_outputs = linear_outputs[idx].view(-1).data.cpu().numpy()
+            y = y[idx].view(-1).data.cpu().numpy()
+
+            if wavenet_util.is_mulaw(config.input_type):
+                linear_outputs = audio.inv_mulaw(linear_outputs, config.quantize_channels)
+                y = audio.inv_mulaw(y, config.quantize_channels)
+
+        # Mask by length
+        # linear_outputs[length:] = 0
+        # y[length:] = 0
+
+        print('yhat', linear_outputs.shape, linear_outputs)
+        print('y', y.shape, y)
+        # Save audio
+        audio_dir = os.path.join(checkpoint_dir, "audio")
+        os.makedirs(audio_dir, exist_ok=True)
+        path = os.path.join(audio_dir, "step{:09d}_predicted.wav".format(global_step))
+        librosa.output.write_wav(path, linear_outputs, sr=config.sample_rate)
+        path = os.path.join(audio_dir, "step{:09d}_target.wav".format(global_step))
+        librosa.output.write_wav(path, y, sr=config.sample_rate)
+
+        return
 
     # idx = np.random.randint(0, len(input_lengths))
     idx = min(1, len(input_lengths) - 1)

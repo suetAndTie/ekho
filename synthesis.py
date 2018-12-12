@@ -10,6 +10,7 @@ import numpy as np
 import torch
 import util.audio as audio
 import util.util as ut
+from config import config
 
 
 use_cuda = torch.cuda.is_available()
@@ -38,11 +39,24 @@ def tts(model, text, p=0, speaker_id=None, fast=False):
         mel_outputs, linear_outputs, alignments, done = model(
             sequence, text_positions=text_positions, speaker_ids=speaker_ids)
 
-    linear_output = linear_outputs[0].cpu().data.numpy()
-    spectrogram = audio._denormalize(linear_output)
+
+    if config.use_wavenet:
+        spectrogram = None
+        if is_mulaw_quantize(config.input_type):
+            linear_outputs = linear_outputs.max(1)[1].view(-1).long().cpu().data.numpy()
+            waveform = audio.inv_mulaw_quantize(linear_outputs, config.quantize_channels)
+        elif is_mulaw(config.input_type):
+            waveform = audio.inv_mulaw(linear_outputs.view(-1).cpu().data.numpy(), config.quantize_channels)
+        else:
+            waveform = linear_outputs.view(-1).cpu().data.numpy()
+    else:
+        linear_output = linear_outputs[0].cpu().data.numpy()
+        spectrogram = audio._denormalize(linear_output)
+
     alignment = alignments[0].cpu().data.numpy()
     mel = mel_outputs[0].cpu().data.numpy()
     mel = audio._denormalize(mel)
+
 
     # Predicted audio signal
     waveform = audio.inv_spectrogram(linear_output.T)

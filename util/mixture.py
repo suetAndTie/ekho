@@ -14,7 +14,19 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from config import config
-import util.util as ut
+
+
+def sequence_mask(sequence_length, max_len=None):
+    if max_len is None:
+        max_len = sequence_length.data.max()
+    batch_size = sequence_length.size(0)
+    seq_range = torch.arange(0, max_len).long()
+    seq_range_expand = seq_range.unsqueeze(0).expand(batch_size, max_len)
+    if sequence_length.is_cuda:
+        seq_range_expand = seq_range_expand.cuda()
+    seq_length_expand = sequence_length.unsqueeze(1) \
+        .expand_as(seq_range_expand)
+    return (seq_range_expand < seq_length_expand).float()
 
 
 class MaskedCrossEntropyLoss(nn.Module):
@@ -28,11 +40,10 @@ class MaskedCrossEntropyLoss(nn.Module):
 
         # (B, T, 1)
         if mask is None:
-            mask = ut.sequence_mask(lengths, max_len).unsqueeze(-1)
+            mask = sequence_mask(lengths, max_len).unsqueeze(-1)
 
         # (B, T, D)
         mask_ = mask.expand_as(target)
-        print(input.shape, target.shape)
         losses = self.criterion(input, target)
         return ((losses * mask_).sum()) / mask_.sum()
 
@@ -47,7 +58,7 @@ class DiscretizedMixturelogisticLoss(nn.Module):
 
         # (B, T, 1)
         if mask is None:
-            mask = ut.sequence_mask(lengths, max_len).unsqueeze(-1)
+            mask = sequence_mask(lengths, max_len).unsqueeze(-1)
 
         # (B, T, 1)
         mask_ = mask.expand_as(target)
@@ -157,6 +168,16 @@ def to_one_hot(tensor, n, fill_with=1.):
     return one_hot
 
 
+def to_one_hot(tensor, n, fill_with=1.):
+    # we perform one hot encore with respect to the last axis
+    one_hot = torch.FloatTensor(tensor.size() + (n,)).zero_()
+    if tensor.is_cuda:
+        one_hot = one_hot.cuda()
+    one_hot.scatter_(len(tensor.size()), tensor.unsqueeze(-1), fill_with)
+    return one_hot
+
+
+
 def sample_from_discretized_mix_logistic(y, log_scale_min=-7.0):
     """
     Sample from discretized mixture of logistic distributions
@@ -184,9 +205,12 @@ def sample_from_discretized_mix_logistic(y, log_scale_min=-7.0):
     means = torch.sum(y[:, :, nr_mix:2 * nr_mix] * one_hot, dim=-1)
     log_scales = torch.clamp(torch.sum(
         y[:, :, 2 * nr_mix:3 * nr_mix] * one_hot, dim=-1), min=log_scale_min)
+
     # sample from logistic & clip to interval
     # we don't actually round to the nearest 8bit value when sampling
     u = means.data.new(means.size()).uniform_(1e-5, 1.0 - 1e-5)
     x = means + torch.exp(log_scales) * (torch.log(u) - torch.log(1. - u))
 
     x = torch.clamp(torch.clamp(x, min=-1.), max=1.)
+
+    return x
