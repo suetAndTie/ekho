@@ -91,6 +91,7 @@ def train(device, model, data_loader, optimizer, writer,
             if config.use_wavenet:
                 mask = ut.sequence_mask(input_lengths, max_len=y.size(1)).unsqueeze(-1)
                 mask = mask[:, 1:, :]
+                mask = mask.to(device)
 
             # Lengths
             input_lengths = input_lengths.long().numpy()
