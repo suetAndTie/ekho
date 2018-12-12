@@ -19,6 +19,8 @@ from loss import spec_loss
 import util.util as ut
 import util.lrschedule as lrschedule
 from util.attention import guided_attentions
+import util.mixture as mix
+import util.wavenet_util as wavenet_util
 
 from dataset.datasource import TextDataSource, MelSpecDataSource, LinearSpecDataSource
 from dataset.dataset import FileDataset, PyTorchDataset
@@ -48,6 +50,13 @@ def train(device, model, data_loader, optimizer, writer,
     r = config.outputs_per_step
     downsample_step = config.downsample_step
     current_lr = init_lr
+
+    # WAVENET CRITERION
+    if config.use_wavenet:
+        if wavenet_util.is_mulaw_quantize(config.input_type):
+            wavenet_criterion = mix.MaskedCrossEntropyLoss()
+        else:
+            wavenet_criterion = mix.DiscretizedMixturelogisticLoss()
 
     binary_criterion = nn.BCELoss()
 
@@ -153,12 +162,27 @@ Please set a larger value for ``max_position`` in hyper parameters.""".format(
 
             # linear:
             if train_postnet:
-                n_priority_freq = int(config.priority_freq / (config.sample_rate * 0.5) * linear_dim)
-                linear_l1_loss, linear_binary_div = spec_loss(
-                    linear_outputs[:, :-r, :], y[:, r:, :], target_mask,
-                    priority_bin=n_priority_freq,
-                    priority_w=config.priority_freq_weight)
-                linear_loss = (1 - w) * linear_l1_loss + w * linear_binary_div
+                if config.use_wavenet:
+                    if wavenet_util.is_mulaw_quantize(config.input_type):
+                        y_hat = y_hat.unsqueeze(-1)
+                        linear_loss = wavenet_criterion(linear_outputs[:, :, :-r, :], y[:, r:, :], mask=target_mask)
+                    else:
+                        linear_loss = wavenet_criterion(linear_outputs[:, :-r, :], y[:, r:, :], mask=target_mask)
+                else:
+                    n_priority_freq = int(config.priority_freq / (config.sample_rate * 0.5) * linear_dim)
+                    linear_l1_loss, linear_binary_div = spec_loss(
+                        linear_outputs[:, :-r, :], y[:, r:, :], target_mask,
+                        priority_bin=n_priority_freq,
+                        priority_w=config.priority_freq_weight)
+                    linear_loss = (1 - w) * linear_l1_loss + w * linear_binary_div
+
+                if wavenet_util.is_mulaw_quantize(config.input_type):
+                    y_hat = y_hat.unsqueeze(-1)
+                    linear_loss = wavenet_criterion(linear_outputs[:, :, :-r, :], y[:, r:, :], mask=target_mask)
+                else:
+                    print("y", y.shape)
+                    linear_loss = wavenet_criterion(linear_outputs[:, :-r, :], y[:, r:, :], mask=target_mask)
+
 
             # Combine losses
             if train_seq2seq and train_postnet:
@@ -204,9 +228,10 @@ Please set a larger value for ``max_position`` in hyper parameters.""".format(
                 writer.add_scalar("mel_binary_div_loss", float(mel_binary_div.item()), global_step)
             if train_postnet:
                 writer.add_scalar("linear_loss", float(linear_loss.item()), global_step)
-                writer.add_scalar("linear_l1_loss", float(linear_l1_loss.item()), global_step)
-                writer.add_scalar("linear_binary_div_loss", float(
-                    linear_binary_div.item()), global_step)
+                if not config.use_wavenet:
+                    writer.add_scalar("linear_l1_loss", float(linear_l1_loss.item()), global_step)
+                    writer.add_scalar("linear_binary_div_loss", float(
+                        linear_binary_div.item()), global_step)
             if train_seq2seq and config.use_guided_attention:
                 writer.add_scalar("attn_loss", float(attn_loss.item()), global_step)
             if clip_thresh > 0:
@@ -215,6 +240,7 @@ Please set a larger value for ``max_position`` in hyper parameters.""".format(
 
             global_step += 1
             running_loss += loss.item()
+            raise "DONE ONE BATCH"
 
         averaged_loss = running_loss / (len(data_loader))
         writer.add_scalar("loss (per epoch)", averaged_loss, global_epoch)

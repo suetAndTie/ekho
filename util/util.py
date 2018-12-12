@@ -19,6 +19,7 @@ import matplotlib
 matplotlib.use('Agg') # To use on linux server without $DISPLAY
 from matplotlib import cm
 import matplotlib.pyplot as plt
+import util.wavenet_util as wavenet_util
 
 fs = config.sample_rate
 
@@ -91,12 +92,35 @@ def create_model(n_vocab, embed_dim=256, mel_dim=80, linear_dim=513, r=4,
     else:
         in_dim = mel_dim
     h = converter_channels
-    converter = Converter(
-        n_speakers=n_speakers, speaker_embed_dim=speaker_embed_dim,
-        in_dim=in_dim, out_dim=linear_dim, dropout=dropout,
-        time_upsampling=time_upsampling,
-        convolutions=[(h, k, 1), (h, k, 3), (2 * h, k, 1), (2 * h, k, 3)],
-    )
+    if config.use_wavenet:
+        converter = Converter(
+            in_channels=in_dim,
+            out_channels=config.out_channels,
+            # out_channels=linear_dim,
+            layers=config.layers,
+            stacks=config.stacks,
+            residual_channels=config.residual_channels,
+            gate_channels=config.gate_channels,
+            skip_out_channels=config.skip_out_channels,
+            cin_channels=mel_dim,
+            gin_channels=speaker_embed_dim,
+            weight_normalization=config.weight_normalization,
+            n_speakers=n_speakers,
+            dropout=config.dropout,
+            kernel_size=config.kernel_size,
+            upsample_conditional_features=config.upsample_conditional_features,
+            upsample_scales=config.upsample_scales,
+            freq_axis_kernel_size=config.freq_axis_kernel_size,
+            # scalar_input=wavenet_util.is_scalar_input(config.input_type),
+            legacy=config.legacy
+        )
+    else:
+        converter = Converter(
+            n_speakers=n_speakers, speaker_embed_dim=speaker_embed_dim,
+            in_dim=in_dim, out_dim=linear_dim, dropout=dropout,
+            time_upsampling=time_upsampling,
+            convolutions=[(h, k, 1), (h, k, 3), (2 * h, k, 1), (2 * h, k, 3)],
+        )
 
     # Seq2seq + post net
     model = MultiSpeakerTTSModel(
