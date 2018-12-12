@@ -295,7 +295,7 @@ if __name__ == '__main__':
 
     ##### OPTIONAL LOAD #####
     if args.resume is not None:
-        checkpoint = util.load_checkpoint(args.resume)
+        checkpoint = ut.load_checkpoint(args.resume)
         model.load_state_dict(checkpoint["state_dict"])
         if config.save_optimizer_state:
             optimizer.load_state_dict(checkpoint["optimizer"])
