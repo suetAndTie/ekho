@@ -75,6 +75,7 @@ class BaseConfig(object):
         self.use_memory_mask = True
         self.trainable_positional_encodings = False
         self.use_decoder_state_for_postnet_input = True
+        self.max_positions = 2048
         self.speaker_embedding_weight_std = 0.01
         self.freeze_embedding = False
         self.key_projection = False

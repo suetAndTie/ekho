@@ -7,7 +7,6 @@ from scipy.interpolate import PchipInterpolator as mono_interp
 from scipy.signal import decimate
 
 
-
 def variable_phase_vocoder(D, times_steps, hop_length=None):
     n_fft = 2 * (D.shape[0] - 1)
 

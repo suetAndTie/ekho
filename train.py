@@ -41,7 +41,7 @@ _frontend = None  # to be set later
 
 def train(device, model, data_loader, optimizer, writer,
           init_lr=0.002,
-          checkpoint_dir=None, checkpoint_interval=None, nepochs=None,
+          checkpoint_dir=None, checkpoint_interval=1000, nepochs=None,
           clip_thresh=1.0,
           train_seq2seq=True, train_postnet=True):
     global _frontend
@@ -93,8 +93,8 @@ def train(device, model, data_loader, optimizer, writer,
             max_seq_len = max(input_lengths.max(), decoder_lengths.max())
             if max_seq_len >= config.max_positions:
                 raise RuntimeError(
-                    """max_seq_len ({}) >= max_posision ({})
-Input text or decoder targget length exceeded the maximum length.
+                    """max_seq_len ({}) >= max_positions ({})
+Input text or decoder target length exceeded the maximum length.
 Please set a larger value for ``max_position`` in hyper parameters.""".format(
                         max_seq_len, config.max_positions))
 
