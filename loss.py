@@ -6,7 +6,7 @@ https://github.com/r9y9/deepvoice3_pytorch/blob/master/train.py
 import torch
 import torch.nn as nn
 from config import config
-
+import util.util as ut
 
 def logit(x, eps=1e-8):
     return torch.log(x + eps) - torch.log(1 - x + eps)
@@ -16,6 +16,8 @@ def masked_mean(y, mask):
     # (B, T, D)
     mask_ = mask.expand_as(y)
     return (y * mask_).sum() / mask_.sum()
+
+
 
 
 class MaskedL1Loss(nn.Module):
@@ -29,7 +31,7 @@ class MaskedL1Loss(nn.Module):
 
         # (B, T, 1)
         if mask is None:
-            mask = sequence_mask(lengths, max_len).unsqueeze(-1)
+            mask = ut.sequence_mask(lengths, max_len).unsqueeze(-1)
 
         # (B, T, D)
         mask_ = mask.expand_as(input)
