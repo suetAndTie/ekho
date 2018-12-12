@@ -8,7 +8,7 @@ class Config(BaseConfig):
         # ADD ANYTHING EXTRA HERE
 
         # WAVENET
-        self.use_wavenet = True
+        self.use_wavenet = False
         if self.use_wavenet:
             self.downsample_step = 1 # originally 4
         self.input_type = 'raw' # 'raw', 'mulaw-quantize'
