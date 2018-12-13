@@ -86,53 +86,6 @@ class Conv1d(nn.Conv1d):
     def _clear_linearized_weight(self, *args):
         self._linearized_weight = None
 
-
-class SinusoidalEncoding(nn.Embedding):
-
-    def __init__(self, num_embeddings, embedding_dim,
-                 *args, **kwargs):
-        super(SinusoidalEncoding, self).__init__(num_embeddings, embedding_dim,
-                                                 padding_idx=0,
-                                                 *args, **kwargs)
-        self.weight.data = position_encoding_init(num_embeddings, embedding_dim,
-                                                  position_rate=1.0,
-                                                  sinusoidal=False)
-
-    def forward(self, x, w=1.0):
-        isscaler = np.isscalar(w)
-        assert self.padding_idx is not None
-
-        if isscaler or w.size(0) == 1:
-            weight = sinusoidal_encode(self.weight, w)
-            return F.embedding(
-                x, weight, self.padding_idx, self.max_norm,
-                self.norm_type, self.scale_grad_by_freq, self.sparse)
-        else:
-            # TODO: cannot simply apply for batch
-            # better to implement efficient function
-            pe = []
-            for batch_idx, we in enumerate(w):
-                weight = sinusoidal_encode(self.weight, we)
-                pe.append(F.embedding(
-                    x[batch_idx], weight, self.padding_idx, self.max_norm,
-                    self.norm_type, self.scale_grad_by_freq, self.sparse))
-            pe = torch.stack(pe)
-            return pe
-
-
-class GradMultiply(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, scale):
-        ctx.scale = scale
-        res = x.new(x)
-        ctx.mark_shared_storage((x, res))
-        return res
-
-    @staticmethod
-    def backward(ctx, grad):
-        return grad * ctx.scale, None
-
-
 def Linear(in_features, out_features, dropout=0):
     """Weight-normalized Linear layer (input: N x T x C)"""
     m = nn.Linear(in_features, out_features)
@@ -220,68 +173,6 @@ class Conv1dGLU(nn.Module):
 
     def clear_buffer(self):
         self.conv.clear_buffer()
-
-
-class HighwayConv1d(nn.Module):
-    """Weight normzlized Conv1d + Highway network (support incremental forward)
-    """
-
-    def __init__(self, in_channels, out_channels, kernel_size=1, padding=None,
-                 dilation=1, causal=False, dropout=0, std_mul=None, glu=False):
-        super(HighwayConv1d, self).__init__()
-        if std_mul is None:
-            std_mul = 4.0 if glu else 1.0
-        if padding is None:
-            # no future time stamps available
-            if causal:
-                padding = (kernel_size - 1) * dilation
-            else:
-                padding = (kernel_size - 1) // 2 * dilation
-        self.causal = causal
-        self.dropout = dropout
-        self.glu = glu
-
-        self.conv = Conv1d(in_channels, 2 * out_channels,
-                           kernel_size=kernel_size, padding=padding,
-                           dilation=dilation, dropout=dropout,
-                           std_mul=std_mul)
-
-    def forward(self, x):
-        return self._forward(x, False)
-
-    def incremental_forward(self, x):
-        return self._forward(x, True)
-
-    def _forward(self, x, is_incremental):
-        """Forward
-        Args:
-            x: (B, in_channels, T)
-        returns:
-            (B, out_channels, T)
-        """
-
-        residual = x
-        x = F.dropout(x, p=self.dropout, training=self.training)
-        if is_incremental:
-            splitdim = -1
-            x = self.conv.incremental_forward(x)
-        else:
-            splitdim = 1
-            x = self.conv(x)
-            # remove future time steps
-            x = x[:, :, :residual.size(-1)] if self.causal else x
-
-        if self.glu:
-            x = F.glu(x, dim=splitdim)
-            return (x + residual) * math.sqrt(0.5)
-        else:
-            a, b = x.split(x.size(splitdim) // 2, dim=splitdim)
-            T = torch.sigmoid(b)
-            return (T * a + (1 - T) * residual)
-
-    def clear_buffer(self):
-        self.conv.clear_buffer()
-
 
 def get_mask_from_lengths(memory, memory_lengths):
     """Get mask tensor from list of length
