@@ -6,7 +6,7 @@ def Embedding(num_embeddings, embedding_dim, padding_idx, std=0.01):
     m.weight.data.normal_(0, std)
     return m
 
-class MultiSpeakerTTSModel(nn.Module):
+class TTSModel(nn.Module):
     """Attention seq2seq model + post processing network
     """
 
