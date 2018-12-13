@@ -5,6 +5,8 @@ ekho - voice style transfer learning
 
 CS 236 Final Project
 
+Based on https://github.com/r9y9/deepvoice3_pytorch
+
 ## Authors
 Trevor Tsue, Samir Sen
 
