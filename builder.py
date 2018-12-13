@@ -1,3 +1,11 @@
+'''
+Adapted from
+https://github.com/r9y9/deepvoice3_pytorch/blob/master/audio.py
+https://github.com/Kyubyong/deepvoice3/blob/master/prepro.py
+https://github.com/Jonathan-LeRoux/lws/blob/master/python/lws.pyx
+'''
+
+
 import torch
 from torch import nn
 
@@ -14,9 +22,7 @@ def ekho(n_vocab, embed_dim=256, mel_dim=80, linear_dim=513, r=4,
                query_position_rate=1.0,
                key_position_rate=1.29,
                ):
-    """Build deepvoice3
-    """
-    from deep_wave_model import Encoder, Decoder, Converter
+    from builder import wavenet
 
     time_upsampling = max(downsample_step // r, 1)
 
@@ -34,25 +40,7 @@ def ekho(n_vocab, embed_dim=256, mel_dim=80, linear_dim=513, r=4,
                       (h, k, 1), (h, k, 3)],
     )
 
-    h = decoder_channels
-    decoder = Decoder(
-        embed_dim, in_dim=mel_dim, r=r, padding_idx=padding_idx,
-        n_speakers=n_speakers, speaker_embed_dim=speaker_embed_dim,
-        dropout=dropout, max_positions=max_positions,
-        preattention=[(h, k, 1), (h, k, 3)],
-        convolutions=[(h, k, 1), (h, k, 3), (h, k, 9), (h, k, 27),
-                      (h, k, 1)],
-        attention=[True, False, False, False, True],
-        force_monotonic_attention=force_monotonic_attention,
-        query_position_rate=query_position_rate,
-        key_position_rate=key_position_rate,
-        use_memory_mask=use_memory_mask,
-        window_ahead=window_ahead,
-        window_backward=window_backward,
-        key_projection=key_projection,
-        value_projection=value_projection,
-    )
-
+    h = decoder_channel
     seq2seq = AttentionSeq2Seq(encoder, decoder)
 
     # Post net
@@ -67,15 +55,3 @@ def ekho(n_vocab, embed_dim=256, mel_dim=80, linear_dim=513, r=4,
         time_upsampling=time_upsampling,
         convolutions=[(h, k, 1), (h, k, 3), (2 * h, k, 1), (2 * h, k, 3)],
     )
-
-    # Seq2seq + post net
-    model = MultiSpeakerTTSModel(
-        seq2seq, converter, padding_idx=padding_idx,
-        mel_dim=mel_dim, linear_dim=linear_dim,
-        n_speakers=n_speakers, speaker_embed_dim=speaker_embed_dim,
-        trainable_positional_encodings=trainable_positional_encodings,
-        use_decoder_state_for_postnet_input=use_decoder_state_for_postnet_input,
-        speaker_embedding_weight_std=speaker_embedding_weight_std,
-        freeze_embedding=freeze_embedding)
-
-    return model
