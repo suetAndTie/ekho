@@ -1,4 +1,5 @@
-import hparams 
+import hparams
+import builder
 
 def build_model():
     model = getattr(builder, hparams.builder)(
