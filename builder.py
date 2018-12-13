@@ -1,10 +1,10 @@
 import torch
 from torch import nn
 
-from deepvoice3_pytorch import MultiSpeakerTTSModel, AttentionSeq2Seq
+from basemodels import MultiSpeakerTTSModel, AttentionSeq2Seq
 
 
-def deepvoice3(n_vocab, embed_dim=256, mel_dim=80, linear_dim=513, r=4,
+def ekho(n_vocab, embed_dim=256, mel_dim=80, linear_dim=513, r=4,
                downsample_step=1,
                n_speakers=1, speaker_embed_dim=16, padding_idx=0,
                dropout=(1 - 0.95), kernel_size=5,
